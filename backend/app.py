@@ -23,10 +23,7 @@ def num(value, default=0):
     return float(value)
 
 def round_to_preferred(value):
-    rounded = math.ceil(value)
-    while rounded % 10 not in [3, 6, 8]:
-        rounded += 1
-    return rounded
+    return round(value)
 
 
 def calculate_line_item(item):
