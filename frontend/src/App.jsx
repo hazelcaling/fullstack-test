@@ -56,11 +56,16 @@ function App() {
     fetchQuotes();
   }, []);
 
-  const formatMoney = (value) =>
-    Number(value || 0).toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-    });
+const formatMoney = (value) => {
+  const num = Number(value || 0);
+
+  if (num === 0) return ""; // ✅ hide $0.00
+
+  return num.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+};
 
   const formatContact = (contact) => {
     if (!contact) return "";
@@ -171,18 +176,8 @@ function App() {
     }
   };
 
-  const roundToPreferred = (value) => {
-  let rounded = Math.ceil(value); // always round UP
-
-  while (true) {
-    const lastDigit = rounded % 10;
-
-    if (lastDigit === 3 || lastDigit === 6 || lastDigit === 8) {
-      return rounded;
-    }
-
-    rounded++;
-  }
+const roundToPreferred = (value) => {
+  return Math.round(value);
 };
 
   const handleSubmitLineItem = async (e) => {
@@ -431,7 +426,9 @@ autoTable(doc, {
   // theme: "grid",
   theme: "plain",
   head: [["TAG:", "QTY:", "DESCRIPTION:", "NET EACH", "EXT. TOTAL"]],
-body: (quote.line_items || []).map((item) => [
+body: [...(quote.line_items || [])]
+  .sort((a, b) => a.id - b.id)
+  .map((item) => [
   item.model || "",
   item.qty || 1,
   (item.description || "")
@@ -804,7 +801,9 @@ const total = sell * qty;
             </thead>
 
             <tbody>
-              {(q.line_items || []).map((item) => (
+              {[...(q.line_items || [])]
+  .sort((a, b) => a.id - b.id)
+  .map((item) => (
                 <tr key={item.id}>
                   <td>{item.model}</td>
                   <td>{item.vendor}</td>
