@@ -41,11 +41,22 @@ h3 {
   min-width: 115px;
 }
 
-.line-item-form input[name="description"],
+/* .line-item-form input[name="description"],
 .line-item-form input[name="notes"] {
   min-width: 230px;
+} */
+/* make description wider */
+.line-item-form textarea[name="description"] {
+  min-width: 500px;   /* wider */
+  max-width: 700px;   /* optional cap */
+  height: 80px;       /* not too tall */
 }
 
+/* keep notes smaller */
+.line-item-form input[name="notes"] {
+  min-width: 250px;
+  height: 60px; 
+}
 .btn {
   padding: 7px 12px;
   margin: 3px;

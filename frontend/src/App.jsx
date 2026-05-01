@@ -25,7 +25,7 @@ function App() {
   };
 
   const emptyLineItem = {
-    model: "",
+    tag: "",
     vendor: "",
     qty: 1,
     description: "",
@@ -229,7 +229,7 @@ const total_price = sell_price * qty;
     setEditingLineItemId(item.id);
 
     setLineItemForm({
-      model: item.model || "",
+      tag: item.tag || "",
       vendor: item.vendor || "",
       qty: item.qty || 1,
       description: item.description || "",
@@ -429,7 +429,7 @@ autoTable(doc, {
 body: [...(quote.line_items || [])]
   .sort((a, b) => a.id - b.id)
   .map((item) => [
-  item.model || "",
+  item.tag || "",
   item.qty || 1,
   (item.description || "")
     .replace(/\r\n/g, "\n")
@@ -672,8 +672,8 @@ const total = sell * qty;
 
 <form className="line-item-form" onSubmit={handleSubmitLineItem}>
 
-  <label>Model / Tag</label>
-  <input name="model" placeholder="Model / Tag" value={lineItemForm.model} onChange={handleLineItemChange} />
+  <label>Tag</label>
+<input name="tag" placeholder="Tag" value={lineItemForm.tag} onChange={handleLineItemChange} />
 
   <label>Vendor</label>
   <input name="vendor" placeholder="Vendor" value={lineItemForm.vendor} onChange={handleLineItemChange} />
@@ -781,7 +781,7 @@ const total = sell * qty;
           <table className="line-items-table">
             <thead>
               <tr>
-                <th>Model</th>
+                <th>Tag</th>
                 <th>Vendor</th>
                 <th>Qty</th>
                 <th>Description</th>
@@ -805,7 +805,7 @@ const total = sell * qty;
   .sort((a, b) => a.id - b.id)
   .map((item) => (
                 <tr key={item.id}>
-                  <td>{item.model}</td>
+                  <td>{item.tag}</td>
                   <td>{item.vendor}</td>
                   <td>{item.qty}</td>
                   <td>{item.description}</td>

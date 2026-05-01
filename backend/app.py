@@ -53,7 +53,7 @@ def line_item_to_dict(item):
     return {
         "id": item.id,
         "quote_id": item.quote_id,
-        "model": item.model,
+        "tag": item.tag,
         "vendor": item.vendor,
         "qty": item.qty,
         "description": item.description,
@@ -155,7 +155,7 @@ def create_line_item(quote_id):
 
     item = LineItem(
     quote_id=quote_id,
-    model=data.get("model"),
+    tag=data.get("tag"),
     vendor=data.get("vendor"),
     qty=num(data.get("qty"), 1),
     description=data.get("description"),
@@ -182,7 +182,7 @@ def update_line_item(id):
     item = LineItem.query.get_or_404(id)
     data = request.json
 
-    item.model = data.get("model", item.model)
+    item.tag = data.get("tag", item.tag)
     item.vendor = data.get("vendor", item.vendor)
     item.qty = num(data.get("qty"), item.qty)
     item.description = data.get("description", item.description)
