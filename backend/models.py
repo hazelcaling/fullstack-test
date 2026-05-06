@@ -122,3 +122,193 @@ class LineItem(db.Model):
 
     notes = db.Column(db.Text)
 
+
+class Product(db.Model):
+    __tablename__ = "products"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # display / search
+    name = db.Column(db.String(255))
+
+    # product info
+    category = db.Column(db.String(100))
+    type = db.Column(db.String(100))
+    series = db.Column(db.String(100))
+    model = db.Column(db.String(100))
+    part_number = db.Column(db.String(100))
+
+    vendor = db.Column(db.String(100))
+    manufacturer = db.Column(db.String(100))
+
+    description = db.Column(db.Text)
+
+    # pricing
+    list_price = db.Column(db.Numeric(12, 2), default=0)
+
+    multiplier = db.Column(db.Numeric(10, 4), default=1)
+
+    surcharge = db.Column(db.Numeric(10, 4), default=0)
+
+    freight = db.Column(db.Numeric(12, 2), default=0)
+
+    net_cost = db.Column(db.Numeric(12, 2), default=0)
+
+    # general notes
+    notes = db.Column(db.Text)
+
+    # active / discontinued
+    is_active = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    # timestamps
+    created_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now()
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now(),
+        onupdate=db.func.now()
+    )
+
+    # relationships
+    addons = db.relationship(
+        "ProductAddon",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )
+
+    notes_library = db.relationship(
+        "ProductNote",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )
+
+# ---------------------------
+# Product Addon Model
+# ---------------------------
+class ProductAddon(db.Model):
+    __tablename__ = "product_addons"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    product_id = db.Column(
+        db.Integer,
+        db.ForeignKey("products.id"),
+        nullable=False
+    )
+
+    product = db.relationship(
+        "Product",
+        back_populates="addons"
+    )
+
+    # accessory
+    # startup
+    # option
+    # warranty
+    # freight
+    addon_type = db.Column(db.String(100))
+
+    # display
+    label = db.Column(db.String(150))
+
+    # product info
+    part_number = db.Column(db.String(100))
+
+    description = db.Column(db.Text)
+
+    qty = db.Column(db.Integer, default=1)
+
+    # pricing
+    list_price = db.Column(db.Numeric(12, 2), default=0)
+
+    multiplier = db.Column(db.Numeric(10, 4), default=1)
+
+    surcharge = db.Column(db.Numeric(10, 4), default=0)
+
+    net_cost = db.Column(db.Numeric(12, 2), default=0)
+
+    # auto select when product chosen
+    default_selected = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    # active / discontinued
+    is_active = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    # timestamps
+    created_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now()
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now(),
+        onupdate=db.func.now()
+    )
+
+# ---------------------------
+# Product Note Model
+# ---------------------------
+class ProductNote(db.Model):
+    __tablename__ = "product_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    product_id = db.Column(
+        db.Integer,
+        db.ForeignKey("products.id"),
+        nullable=False
+    )
+
+    product = db.relationship(
+        "Product",
+        back_populates="notes_library"
+    )
+
+    # exception
+    # item_note
+    # freight_note
+    # startup_note
+    # warranty_note
+    note_type = db.Column(db.String(100))
+
+    # short display label
+    label = db.Column(db.String(150))
+
+    # actual note text
+    text = db.Column(db.Text)
+
+    # auto select when product chosen
+    default_selected = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    # active / discontinued
+    is_active = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    # timestamps
+    created_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now()
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=db.func.now(),
+        onupdate=db.func.now()
+    )
