@@ -124,6 +124,10 @@ def update_quote(id):
     quote = Quote.query.get_or_404(id)
     data = request.json
 
+    print("🔥 PUT /quotes/<id> received:")
+    print(request.json)
+
+    quote.date = data.get("date", quote.date)  # ✅ ADD THIS LINE
     quote.bid_date = data.get("bid_date", quote.bid_date)
     quote.contact = data.get("contact", quote.contact or [])
     quote.project = data.get("project", quote.project)
@@ -133,6 +137,8 @@ def update_quote(id):
     quote.status = data.get("status", quote.status)
 
     db.session.commit()
+
+    print("🔥 Updated quote saved:", quote)
 
     return jsonify(quote_to_dict(quote))
 

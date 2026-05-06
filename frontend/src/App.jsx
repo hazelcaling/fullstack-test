@@ -150,6 +150,8 @@ const formatMoney = (value) => {
     fetchQuotes();
   };
 
+
+
   const handleEditQuote = (quote) => {
     setEditingId(quote.id);
     setSavedQuote(quote);
@@ -672,8 +674,18 @@ const total = sell * qty;
 
 <form className="line-item-form" onSubmit={handleSubmitLineItem}>
 
-  <label>Tag</label>
-<input name="tag" placeholder="Tag" value={lineItemForm.tag} onChange={handleLineItemChange} />
+<label>Tag</label>
+
+<textarea
+  name="tag"
+  placeholder={`Line 1
+Line 2
+Line 3`}
+  value={lineItemForm.tag}
+  onChange={handleLineItemChange}
+  rows={4}
+  className="tag-textarea"
+/>
 
   <label>Vendor</label>
   <input name="vendor" placeholder="Vendor" value={lineItemForm.vendor} onChange={handleLineItemChange} />

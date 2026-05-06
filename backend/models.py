@@ -97,12 +97,6 @@ class LineItem(db.Model):
         nullable=False
     )
 
-    product_id = db.Column(
-        db.Integer,
-        db.ForeignKey("products.id"),
-        nullable=True
-    )
-
     # Basic info
     tag = db.Column(db.String(100))
     vendor = db.Column(db.String(100))
@@ -128,50 +122,3 @@ class LineItem(db.Model):
 
     notes = db.Column(db.Text)
 
-    product = db.relationship(
-        "Product",
-        back_populates="line_items"
-    )
-
-
-# ---------------------------
-# Product Model
-# ---------------------------
-
-class Product(db.Model):
-    __tablename__ = "products"
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    part_number = db.Column(db.String(100), unique=True, nullable=False)
-    model = db.Column(db.String(100))
-    series = db.Column(db.String(100))
-    vendor = db.Column(db.String(100))
-
-    category = db.Column(db.String(50))   # Boiler, Pump, Tank, etc
-    type = db.Column(db.String(50))       # Condensing, Inline, etc
-
-    name = db.Column(db.String(200))      # short display name
-    description = db.Column(db.Text)      # full quote description
-
-    # Pricing defaults
-    list_price = db.Column(db.Numeric(10, 2), default=0)
-    multiplier = db.Column(db.Numeric(10, 4), default=1)
-    surcharge = db.Column(db.Numeric(10, 4), default=0)
-    freight = db.Column(db.Numeric(10, 2), default=0)  # ✅ added
-
-    notes = db.Column(db.Text)
-    is_active = db.Column(db.Boolean, default=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow
-    )
-
-    line_items = db.relationship(
-        "LineItem",
-        back_populates="product",
-        order_by="LineItem.id"
-    )

@@ -1,1 +1,27 @@
 .env*
+backend/venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+backend/venv/
+
+# Database
+*.db
+*.sqlite3
+
+# Flask
+instance/
+
+# Frontend
+node_modules/
+dist/
+
+# Mac / VS Code
+.DS_Store
+.vscode/
