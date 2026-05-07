@@ -78,7 +78,7 @@ class Quote(db.Model):
         "LineItem",
         backref="quote",
         cascade="all, delete-orphan",
-        order_by="LineItem.id"
+        order_by="LineItem.sort_order"
     )
 
 
@@ -96,6 +96,8 @@ class LineItem(db.Model):
         db.ForeignKey("quotes.id"),
         nullable=False
     )
+
+    sort_order = db.Column(db.Integer, default=0)
 
     # Basic info
     tag = db.Column(db.String(100))

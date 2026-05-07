@@ -53,6 +53,7 @@ def line_item_to_dict(item):
     return {
         "id": item.id,
         "quote_id": item.quote_id,
+        "sort_order": item.sort_order,
         "tag": item.tag,
         "vendor": item.vendor,
         "qty": item.qty,
@@ -153,27 +154,36 @@ def delete_quote(id):
 
     return jsonify({"message": "Quote deleted"}), 200
 
-
 @app.route("/quotes/<int:quote_id>/line-items", methods=["POST"])
 def create_line_item(quote_id):
     Quote.query.get_or_404(quote_id)
     data = request.json
 
+    last_item = (
+        LineItem.query
+        .filter_by(quote_id=quote_id)
+        .order_by(LineItem.sort_order.desc())
+        .first()
+    )
+
+    next_sort_order = (last_item.sort_order + 1) if last_item else 1
+
     item = LineItem(
-    quote_id=quote_id,
-    tag=data.get("tag"),
-    vendor=data.get("vendor"),
-    qty=num(data.get("qty"), 1),
-    description=data.get("description"),
-    list_price=num(data.get("list_price"), 0),
-    multiplier=num(data.get("multiplier"), 1),
-    markup=num(data.get("markup"), 0),
-    freight=num(data.get("freight"), 0),
-    startup=num(data.get("startup"), 0),
-    surcharge=num(data.get("surcharge"), 0),  # ⭐ important
-    terms=data.get("terms", "FFA"),
-    notes=data.get("notes"),
-)
+        quote_id=quote_id,
+        sort_order=next_sort_order,
+        tag=data.get("tag"),
+        vendor=data.get("vendor"),
+        qty=num(data.get("qty"), 1),
+        description=data.get("description"),
+        list_price=num(data.get("list_price"), 0),
+        multiplier=num(data.get("multiplier"), 1),
+        markup=num(data.get("markup"), 0),
+        freight=num(data.get("freight"), 0),
+        startup=num(data.get("startup"), 0),
+        surcharge=num(data.get("surcharge"), 0),
+        terms=data.get("terms", "FFA"),
+        notes=data.get("notes"),
+    )
 
     calculate_line_item(item)
 
@@ -216,6 +226,24 @@ def delete_line_item(id):
     db.session.commit()
 
     return jsonify({"message": "Line item deleted"}), 200
+
+
+@app.route("/quotes/<int:quote_id>/line-items/reorder", methods=["PUT"])
+def reorder_line_items(quote_id):
+    Quote.query.get_or_404(quote_id)
+    data = request.json
+
+    item_ids = data.get("item_ids", [])
+
+    for index, item_id in enumerate(item_ids):
+        item = LineItem.query.filter_by(id=item_id, quote_id=quote_id).first()
+        if item:
+            item.sort_order = index + 1
+
+    db.session.commit()
+
+    quote = Quote.query.get_or_404(quote_id)
+    return jsonify(quote_to_dict(quote))
 
 
 if __name__ == "__main__":
