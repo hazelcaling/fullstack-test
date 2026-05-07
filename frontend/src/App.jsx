@@ -47,6 +47,8 @@ function App() {
   const [editingLineItemId, setEditingLineItemId] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
 
+  const [draggedLineItem, setDraggedLineItem] = useState(null);
+
   const fetchQuotes = async () => {
     const res = await axios.get(`${API}/quotes`);
     setQuotes(res.data);
@@ -251,6 +253,57 @@ const total_price = sell_price * qty;
     fetchQuotes();
   };
 
+
+const handleDropLineItem = async (quoteId, targetItemId) => {
+  if (!draggedLineItem) return;
+  if (draggedLineItem.quoteId !== quoteId) return;
+  if (draggedLineItem.itemId === targetItemId) return;
+
+  let newItemOrder = [];
+
+  setQuotes((prevQuotes) =>
+    prevQuotes.map((quote) => {
+      if (quote.id !== quoteId) return quote;
+
+      const items = [...(quote.line_items || [])];
+
+      const fromIndex = items.findIndex(
+        (item) => item.id === draggedLineItem.itemId
+      );
+
+      const toIndex = items.findIndex(
+        (item) => item.id === targetItemId
+      );
+
+      if (fromIndex === -1 || toIndex === -1) return quote;
+
+      const [movedItem] = items.splice(fromIndex, 1);
+
+      items.splice(toIndex, 0, movedItem);
+
+      newItemOrder = items.map((item) => item.id);
+
+      return {
+        ...quote,
+        line_items: items,
+      };
+    })
+  );
+
+  setDraggedLineItem(null);
+
+  if (newItemOrder.length > 0) {
+    await axios.put(
+      `${API}/quotes/${quoteId}/line-items/reorder`,
+      {
+        item_ids: newItemOrder,
+      }
+    );
+
+    fetchQuotes();
+  }
+};
+
   const printQuotePdf = async (quote, mode = "preview") => {
     const doc = new jsPDF("p", "pt", "letter");
 
@@ -429,7 +482,6 @@ autoTable(doc, {
   theme: "plain",
   head: [["TAG:", "QTY:", "DESCRIPTION:", "NET EACH", "EXT. TOTAL"]],
 body: [...(quote.line_items || [])]
-  .sort((a, b) => a.id - b.id)
   .map((item) => [
   item.tag || "",
   item.qty || 1,
@@ -793,6 +845,7 @@ Line 3`}
           <table className="line-items-table">
             <thead>
               <tr>
+                <th></th>
                 <th>Tag</th>
                 <th>Vendor</th>
                 <th>Qty</th>
@@ -814,9 +867,28 @@ Line 3`}
 
             <tbody>
               {[...(q.line_items || [])]
-  .sort((a, b) => a.id - b.id)
   .map((item) => (
                 <tr key={item.id}>
+                  <td
+  draggable
+  onDragStart={() =>
+    setDraggedLineItem({
+      quoteId: q.id,
+      itemId: item.id,
+    })
+  }
+  onDragOver={(e) => e.preventDefault()}
+  onDrop={() => handleDropLineItem(q.id, item.id)}
+  style={{
+    cursor: "grab",
+    textAlign: "center",
+    fontSize: "18px",
+    userSelect: "none",
+  }}
+  title="Drag to reorder"
+>
+  ☰
+</td>
                   <td>{item.tag}</td>
                   <td>{item.vendor}</td>
                   <td>{item.qty}</td>
@@ -845,7 +917,7 @@ Line 3`}
 
               {(!q.line_items || q.line_items.length === 0) && (
                 <tr>
-                  <td colSpan="16">No line items yet.</td>
+                  <td colSpan="17">No line items yet.</td>
                 </tr>
               )}
             </tbody>
