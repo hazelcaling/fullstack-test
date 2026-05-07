@@ -856,8 +856,8 @@ Line 3`}
                 <th>Freight</th>
                 <th>Startup</th>
                 <th>Surcharge</th>
-                <th>Net Cost EACH</th>
-                <th>Sell Price EACH</th>
+                <th>Net Cost</th>
+                <th>Sell Price</th>
                 <th>Terms</th>
                 <th>Total</th>
                 <th>Notes</th>
