@@ -24,4 +24,5 @@ dist/
 
 # Mac / VS Code
 .DS_Store
-.vscode/
+.vscode/__pycache__/
+*.pyc
