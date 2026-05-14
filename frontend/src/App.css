@@ -95,6 +95,8 @@ h3 {
 .quote-table {
   border-collapse: collapse;
   width: 900px;
+  width: 100%;
+  max-width: 1000px;
   margin-bottom: 10px;
   font-size: 14px;
   background: white;
@@ -141,4 +143,77 @@ h3 {
 
 hr {
   margin: 25px 0;
+}
+
+
+
+
+
+
+
+/* new 5/13/2026 */
+
+.container {
+  max-width: 100%;
+  width: 100%;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background: #f2f2f2;
+  color: #111;
+  box-sizing: border-box;
+  overflow-x: auto;
+}
+
+.line-items-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1250px;
+  font-size: 12px;
+  margin-top: 10px;
+  background: white;
+  table-layout: fixed;
+}
+
+.line-items-table th,
+.line-items-table td {
+  border: 1px solid #999;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.25;
+}
+
+.line-items-table th {
+  background: #efefef;
+  font-weight: bold;
+}
+
+/* make tag wider */
+.line-items-table th:nth-child(2),
+.line-items-table td:nth-child(2) {
+  width: 90px;
+  white-space: pre-line;
+}
+
+/* keep description from making row too tall */
+.line-items-table th:nth-child(5),
+.line-items-table td:nth-child(5) {
+  width: 260px;
+  max-height: 70px;
+  overflow-y: auto;
+  white-space: pre-line;
+  line-height: 1.25;
+}
+
+/* actions column */
+.line-items-table th:nth-child(17),
+.line-items-table td:nth-child(17) {
+  width: 90px;
+}
+
+/* smaller buttons inside table */
+.line-items-table .btn {
+  padding: 5px 9px;
+  font-size: 12px;
+  margin: 2px;
 }

@@ -8,6 +8,7 @@ import hteLogo from "./assets/hte-logo.jpg";
 import hteAddress from "./assets/hte-address.png";
 import { PDFDocument } from "pdf-lib";
 import lastTwoPagesPdf from "./assets/last two page.pdf";
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType } from "docx";
 
 const API = "http://localhost:5000";
 
@@ -199,7 +200,7 @@ const roundToPreferred = (value) => {
   const freight = Number(lineItemForm.freight || 0);
   const startup = Number(lineItemForm.startup || 0);
   const surcharge = Number(lineItemForm.surcharge || 0);
-  const qty = Number(lineItemForm.qty || 1);
+  const qty = Number(lineItemForm.qty || 0);
 
 const net_cost = list * (1 + surcharge) * multiplier;
 
@@ -254,54 +255,94 @@ const total_price = sell_price * qty;
   };
 
 
+// const handleDropLineItem = async (quoteId, targetItemId) => {
+//   if (!draggedLineItem) return;
+//   if (draggedLineItem.quoteId !== quoteId) return;
+//   if (draggedLineItem.itemId === targetItemId) return;
+
+//   let newItemOrder = [];
+
+//   setQuotes((prevQuotes) =>
+//     prevQuotes.map((quote) => {
+//       if (quote.id !== quoteId) return quote;
+
+//       const items = [...(quote.line_items || [])];
+
+//       const fromIndex = items.findIndex(
+//         (item) => item.id === draggedLineItem.itemId
+//       );
+
+//       const toIndex = items.findIndex(
+//         (item) => item.id === targetItemId
+//       );
+
+//       if (fromIndex === -1 || toIndex === -1) return quote;
+
+//       const [movedItem] = items.splice(fromIndex, 1);
+
+//       items.splice(toIndex, 0, movedItem);
+
+//       newItemOrder = items.map((item) => item.id);
+
+//       return {
+//         ...quote,
+//         line_items: items,
+//       };
+//     })
+//   );
+
+//   setDraggedLineItem(null);
+
+//   if (newItemOrder.length > 0) {
+//     await axios.put(
+//       `${API}/quotes/${quoteId}/line-items/reorder`,
+//       {
+//         item_ids: newItemOrder,
+//       }
+//     );
+
+//     fetchQuotes();
+//   }
+// };
+
 const handleDropLineItem = async (quoteId, targetItemId) => {
   if (!draggedLineItem) return;
   if (draggedLineItem.quoteId !== quoteId) return;
   if (draggedLineItem.itemId === targetItemId) return;
 
-  let newItemOrder = [];
+  const quote = quotes.find((q) => q.id === quoteId);
+  if (!quote) return;
+
+  const items = [...(quote.line_items || [])];
+
+  const fromIndex = items.findIndex((item) => item.id === draggedLineItem.itemId);
+  const toIndex = items.findIndex((item) => item.id === targetItemId);
+
+  if (fromIndex === -1 || toIndex === -1) return;
+
+  const [movedItem] = items.splice(fromIndex, 1);
+  items.splice(toIndex, 0, movedItem);
+
+  const updatedItems = items.map((item, index) => ({
+    ...item,
+    sort_order: index + 1,
+  }));
 
   setQuotes((prevQuotes) =>
-    prevQuotes.map((quote) => {
-      if (quote.id !== quoteId) return quote;
-
-      const items = [...(quote.line_items || [])];
-
-      const fromIndex = items.findIndex(
-        (item) => item.id === draggedLineItem.itemId
-      );
-
-      const toIndex = items.findIndex(
-        (item) => item.id === targetItemId
-      );
-
-      if (fromIndex === -1 || toIndex === -1) return quote;
-
-      const [movedItem] = items.splice(fromIndex, 1);
-
-      items.splice(toIndex, 0, movedItem);
-
-      newItemOrder = items.map((item) => item.id);
-
-      return {
-        ...quote,
-        line_items: items,
-      };
-    })
+    prevQuotes.map((q) =>
+      q.id === quoteId
+        ? { ...q, line_items: updatedItems }
+        : q
+    )
   );
 
   setDraggedLineItem(null);
 
-  if (newItemOrder.length > 0) {
-    await axios.put(
-      `${API}/quotes/${quoteId}/line-items/reorder`,
-      {
-        item_ids: newItemOrder,
-      }
-    );
+  await axios.put(`${API}/quotes/${quoteId}/line-items/reorder`, {
+    item_ids: updatedItems.map((item) => item.id),
+  });
 
-    fetchQuotes();
-  }
+  fetchQuotes();
 };
 
   const printQuotePdf = async (quote, mode = "preview") => {
@@ -475,6 +516,17 @@ y += 10;
 
 doc.setTextColor(0, 0, 0);
 
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9);
+doc.text(
+  "NO SPECIFICATIONS PROVIDED",
+  pageWidth / 2,
+  y,
+  { align: "center" }
+);
+
+y += 12;
+
 autoTable(doc, {
   startY: y,
   margin: { left: marginLeft - 10, right: marginRight -10 },
@@ -484,7 +536,7 @@ autoTable(doc, {
 body: [...(quote.line_items || [])]
   .map((item) => [
   item.tag || "",
-  item.qty || 1,
+  Number(item.qty) > 0 ? item.qty : "",
   (item.description || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
@@ -523,6 +575,156 @@ body: [...(quote.line_items || [])]
   bodyStyles: {
     valign: "top",
   },
+
+//   didParseCell: function (data) {
+
+    
+//   // DESCRIPTION column only
+//   if (data.section === "body" && data.column.index === 2) {
+//     const text = Array.isArray(data.cell.text)
+//       ? data.cell.text.join(" ")
+//       : String(data.cell.text || "");
+
+//     // if contains bullet
+//     if (text.includes("•")) {
+//       data.cell.styles.fontStyle = "italic";
+//     }
+//   }
+// },
+
+// didParseCell: function (data) {
+//   if (data.section === "body" && data.column.index === 2) {
+//     const raw = String(data.row.raw[2] || "");
+
+//     if (raw.includes("||")) {
+//       // hide original text so custom text does not print twice
+//       data.cell.styles.textColor = [255, 255, 255];
+//     } else if (raw.includes("•")) {
+//       // fallback: italicize full cell if no custom bold separator
+//       data.cell.styles.fontStyle = "italic";
+//     }
+//   }
+// },
+
+didParseCell: function (data) {
+
+  // reset every cell to normal first
+  // data.cell.styles.fontStyle = "normal";
+
+  // TAG column - hide only marked lines from autoTable
+  if (data.section === "body" && data.column.index === 0) {
+    const raw = String(data.cell.raw || "");
+
+    data.cell.text = raw
+      .split("\n")
+      .map((line) => {
+        if (line.trim().startsWith("!")) return " ";
+        return line.trim();
+      });
+  }
+
+  // DESCRIPTION column
+// DESCRIPTION column
+if (data.section === "body" && data.column.index === 2) {
+  const raw = String(data.cell.raw || "");
+
+  if (raw.includes("||")) {
+    data.cell.text = data.cell.text.map((line) =>
+      String(line).replace(/\|\|/g, "")
+    );
+  }
+}
+},
+
+didDrawCell: function (data) {
+
+
+  // TAG column - yellow + bold only line with *
+  if (data.section === "body" && data.column.index === 0) {
+    const raw = String(data.row.raw[0] || "");
+    const lines = raw.split("\n");
+
+    const x = data.cell.x + 10;
+    let y = data.cell.y + 8;
+    const lineHeight = 8.5;
+
+    lines.forEach((line) => {
+      const isMarked = line.trim().startsWith("!");
+      const cleanLine = line.replace(/^\!/, "").trim();
+
+      if (isMarked && cleanLine) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+
+        const textWidth = doc.getTextWidth(cleanLine);
+
+        doc.setFillColor(255, 255, 0);
+        doc.rect(x - 1, y - 6, textWidth + 3, 8, "F");
+
+        doc.setTextColor(0, 0, 0);
+        doc.text(cleanLine, x, y);
+      }
+
+      y += lineHeight;
+    });
+  }
+
+  
+  
+
+//   if (data.section !== "body") return;
+//   if (data.column.index !== 2) return;
+
+//   // ✅ Do not custom-draw repeated/continued rows on new page
+// if (data.cell.raw === undefined || data.cell.raw === null) return;
+
+//   const raw = String(data.row.raw[2] || "");
+//   if (!raw.includes("||")) return;
+
+//   const [boldPart, ...restParts] = raw.split("||");
+//   const boldText = boldPart.trim();
+//   const normalText = restParts.join("||").trim();
+
+//   const x = data.cell.x + 3;
+//   let y = data.cell.y + 8;
+//   const maxWidth = data.cell.width - 6;
+//   const lineHeight = 8.5;
+
+//   doc.setTextColor(0, 0, 0);
+
+//   doc.setFont("helvetica", "bold");
+//   doc.text(boldText, x, y);
+
+//   const boldWidth = doc.getTextWidth(boldText + " ");
+
+//   doc.setFont("helvetica", "normal");
+
+//   const normalLines = doc.splitTextToSize(normalText, maxWidth - boldWidth);
+
+//   if (normalLines.length > 0) {
+//     doc.text(normalLines[0], x + boldWidth, y);
+//   }
+
+//   y += lineHeight;
+
+  // const remainingText = normalLines.slice(1).join(" ");
+  // const remainingLines = doc.splitTextToSize(remainingText, maxWidth);
+
+  // remainingLines.forEach((line) => {
+  //   const trimmed = line.trim();
+
+  //   if (trimmed.startsWith("•")) {
+  //     doc.setFont("helvetica", "italic");
+  //   } else {
+  //     doc.setFont("helvetica", "normal");
+  //   }
+
+  //   doc.text(line, x, y);
+  //   y += lineHeight;
+  // });
+},
+
+  
 
 });
 
@@ -648,6 +850,75 @@ const total = sell * qty;
 
   return { net, sell, total };
 })();
+
+const downloadQuoteWord = async (quote) => {
+  const rows = [
+    ["TAG", "QTY", "DESCRIPTION", "NET EACH", "EXT. TOTAL"],
+    ...(quote.line_items || []).map((item) => [
+      item.tag || "",
+      String(item.qty || 1),
+      item.description || "",
+      formatMoney(item.sell_price),
+      formatMoney(item.total_price),
+    ]),
+  ];
+
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: "QUOTATION", bold: true, size: 32 })],
+            spacing: { after: 300 },
+          }),
+
+          new Paragraph(`Date: ${quote.date || ""}`),
+          new Paragraph(`Quote #: ${quote.quote_number || ""}`),
+          new Paragraph(`To: ${quote.to_company || ""}`),
+          new Paragraph(`Attention: ${quote.attention || ""}`),
+          new Paragraph(`Project: ${quote.project || ""}`),
+          new Paragraph(`Location: ${quote.location || ""}`),
+          new Paragraph(""),
+
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: rows.map(
+              (row) =>
+                new TableRow({
+                  children: row.map(
+                    (cell) =>
+                      new TableCell({
+                        children: [new Paragraph(String(cell || ""))],
+                      })
+                  ),
+                })
+            ),
+          }),
+
+          new Paragraph(""),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `TOTAL: ${formatMoney(quoteTotal(quote))}`,
+                bold: true,
+              }),
+            ],
+          }),
+        ],
+      },
+    ],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${quote.quote_number || "quote"}.docx`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+};
 
 
 
@@ -839,6 +1110,7 @@ Line 3`}
             <button className="btn edit" onClick={() => handleEditQuote(q)}>Edit Quote</button>
             <button className="btn secondary" onClick={() => previewQuotePdf(q)}>Preview PDF</button>
             <button className="btn secondary" onClick={() => downloadQuotePdf(q)}>Download PDF</button>
+            <button className="btn secondary" onClick={() => downloadQuoteWord(q)}>Download Word</button>
             <button className="btn delete" onClick={() => handleDeleteQuote(q.id)}>Delete Quote</button>
           </div>
 
@@ -866,7 +1138,8 @@ Line 3`}
             </thead>
 
             <tbody>
-              {[...(q.line_items || [])]
+{[...(q.line_items || [])]
+  .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
   .map((item) => (
                 <tr key={item.id}>
                   <td

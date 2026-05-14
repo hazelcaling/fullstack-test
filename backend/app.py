@@ -72,7 +72,27 @@ def line_item_to_dict(item):
     }
 
 
+# def quote_to_dict(q):
+#     return {
+#         "id": q.id,
+#         "date": q.date.strftime("%m/%d/%Y"),
+#         "quote_number": q.quote_number,
+#         "bid_date": q.bid_date,
+#         "contact": q.contact or [],
+#         "project": q.project,
+#         "to_company": q.to_company,
+#         "attention": q.attention,
+#         "location": q.location,
+#         "line_items": [line_item_to_dict(item) for item in q.line_items],
+#         "status": q.status,
+#     }
+
 def quote_to_dict(q):
+    sorted_line_items = sorted(
+        q.line_items,
+        key=lambda item: item.sort_order or 0
+    )
+
     return {
         "id": q.id,
         "date": q.date.strftime("%m/%d/%Y"),
@@ -83,7 +103,7 @@ def quote_to_dict(q):
         "to_company": q.to_company,
         "attention": q.attention,
         "location": q.location,
-        "line_items": [line_item_to_dict(item) for item in q.line_items],
+        "line_items": [line_item_to_dict(item) for item in sorted_line_items],
         "status": q.status,
     }
 
