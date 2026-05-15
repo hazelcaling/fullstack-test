@@ -16,6 +16,7 @@ function App() {
   const today = new Date().toLocaleDateString("en-US");
 
   const emptyForm = {
+    date: "",
     bid_date: "N/A",
     contact: [],
     project: "",
@@ -161,6 +162,7 @@ const formatMoney = (value) => {
     setActiveQuoteId(quote.id);
 
     setForm({
+      date: quote.date || "",
       bid_date: quote.bid_date || "N/A",
       contact: normalizeContact(quote.contact),
       project: quote.project || "",
@@ -633,6 +635,14 @@ if (data.section === "body" && data.column.index === 2) {
       String(line).replace(/\|\|/g, "")
     );
   }
+
+  data.cell.text = data.cell.text.map((line) => {
+  if (String(line).trim().startsWith("•")) {
+    return "   " + line;
+  }
+  return line;
+});
+
 }
 },
 
@@ -938,6 +948,12 @@ const downloadQuoteWord = async (quote) => {
         <input name="to_company" placeholder="To" value={form.to_company} onChange={handleChange} />
         <input name="attention" placeholder="Attention" value={form.attention} onChange={handleChange} />
         <input name="location" placeholder="Location" value={form.location} onChange={handleChange} />
+        <input
+  name="date"
+  placeholder="Quote Date"
+  value={form.date}
+  onChange={handleChange}
+/>
         <input name="bid_date" placeholder="Bid Date" value={form.bid_date} onChange={handleChange} />
 
         <select name="status" value={form.status} onChange={handleChange}>
