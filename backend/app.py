@@ -69,6 +69,8 @@ def line_item_to_dict(item):
         "total_price": money(item.total_price),
         "terms": item.terms,
         "notes": item.notes,
+        "included": item.included,
+        
     }
 
 
@@ -203,6 +205,7 @@ def create_line_item(quote_id):
         surcharge=num(data.get("surcharge"), 0),
         terms=data.get("terms", "FFA"),
         notes=data.get("notes"),
+        included=data.get("included", False),
     )
 
     calculate_line_item(item)
@@ -230,6 +233,7 @@ def update_line_item(id):
     item.surcharge = num(data.get("surcharge"), 0)
     item.terms = data.get("terms", item.terms)
     item.notes = data.get("notes", item.notes)
+    item.included = data.get("included", item.included)
 
     calculate_line_item(item)
 

@@ -39,6 +39,7 @@ function App() {
     surcharge: 0,
     terms: "FFA",
     notes: "",
+    included: false,
   };
 
   const [quotes, setQuotes] = useState([]);
@@ -238,7 +239,7 @@ const total_price = sell_price * qty;
     setLineItemForm({
       tag: item.tag || "",
       vendor: item.vendor || "",
-      qty: item.qty || 1,
+      qty: item.qty ?? 1,
       description: item.description || "",
       list_price: item.list_price || 0,
       multiplier: item.multiplier || 1,
@@ -248,6 +249,7 @@ const total_price = sell_price * qty;
       surcharge: item.surcharge || 0,
       terms: item.terms || "FFA",
       notes: item.notes || "",
+      included: item.included ?? false,
     });
   };
 
@@ -433,7 +435,7 @@ autoTable(doc, {
   },
 columnStyles: {
   0: { cellWidth: 80, fontStyle: "bold", fillColor: [235, 235, 235] },
-  1: { cellWidth: 180 },
+  1: { cellWidth: 180, },
   2: { cellWidth: 90, fontStyle: "bold", fillColor: [235, 235, 235] },
   3: { cellWidth: 180 },
 },
@@ -546,15 +548,17 @@ body: [...(quote.line_items || [])]
     .replace(/\n{3,}/g, "\n\n")
     .replace(/(^|\n)-\s+/g, "$1• ")
     .trim(),
-  formatMoney(item.sell_price),
-  formatMoney(item.total_price),
+  // formatMoney(item.sell_price),
+  // formatMoney(item.total_price),
+item.included ? "Included" : formatMoney(item.sell_price),
+item.included ? "Included" : formatMoney(item.total_price),
 ]),
     
 
   styles: {
     font: "helvetica",
     fontSize: 8,
-    cellPadding: 4,
+    cellPadding: { top: 8, bottom: 8, left: 4, right: 4 },
     textColor: [0, 0, 0],
     lineColor: [0, 0, 0],
     halign: "left",
@@ -568,11 +572,11 @@ body: [...(quote.line_items || [])]
   },
   columnStyles: {
     // 0: { cellWidth: 80 },
-    0: { cellWidth: 75, cellPadding: { left: 10, right: 4, top: 4, bottom: 4 } },
-    1: { cellWidth: 40, halign: "center" },
+    0: { cellWidth: 85, cellPadding: { left: 10, right: 4, top: 8, bottom: 8 }, fontStyle: "bold" },
+    1: { cellWidth: 40, halign: "center", fontStyle: "bold" },
     2: { cellWidth: 295, halign: "left" },
-    3: { cellWidth: 75, halign: "center" },
-    4: { cellWidth: 75, halign: "center", fontStyle: "bold" },
+    3: { cellWidth: 70, halign: "center" },
+    4: { cellWidth: 70, halign: "center", fontStyle: "bold" },
   },
   bodyStyles: {
     valign: "top",
@@ -1071,6 +1075,20 @@ Line 3`}
     <option value="FFA">FFA</option>
     <option value="FOB">FOB</option>
   </select>
+<label>
+  <input
+    type="checkbox"
+    name="included"
+    checked={lineItemForm.included ?? false}
+    onChange={(e) =>
+      setLineItemForm({
+        ...lineItemForm,
+        included: e.target.checked,
+      })
+    }
+  />
+  Included
+</label>
 
   <label>Notes</label>
   <input name="notes" placeholder="Notes" value={lineItemForm.notes} onChange={handleLineItemChange} />

@@ -124,3 +124,5 @@ class LineItem(db.Model):
 
     notes = db.Column(db.Text)
 
+    included = db.Column(db.Boolean, default=False)
+
