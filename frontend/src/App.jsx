@@ -620,8 +620,9 @@ didParseCell: function (data) {
     data.cell.text = raw
       .split("\n")
       .map((line) => {
-        if (line.trim().startsWith("!")) return " ";
-        return line.trim();
+        // if (line.trim().startsWith("!")) return " ";
+        // return line.trim();
+        return line.replace("!", "").trim();
       });
   }
 
@@ -646,93 +647,99 @@ if (data.section === "body" && data.column.index === 2) {
 }
 },
 
-didDrawCell: function (data) {
+// didDrawCell: function (data) {
 
 
-  // TAG column - yellow + bold only line with *
-  if (data.section === "body" && data.column.index === 0) {
-    const raw = String(data.row.raw[0] || "");
-    const lines = raw.split("\n");
+//   // TAG column - yellow + bold only line with *
 
-    const x = data.cell.x + 10;
-    let y = data.cell.y + 8;
-    const lineHeight = 8.5;
+//   if (
+//   data.section === "body" &&
+//   data.column.index === 0 &&
+//   data.cell.raw !== undefined &&
+//   data.cell.raw !== null
+// ) {
+//     const raw = String(data.row.raw[0] || "");
+//     const lines = raw.split("\n");
 
-    lines.forEach((line) => {
-      const isMarked = line.trim().startsWith("!");
-      const cleanLine = line.replace(/^\!/, "").trim();
+//     const x = data.cell.x + 10;
+//     let y = data.cell.y + 11;
+//     const lineHeight = 8.5;
 
-      if (isMarked && cleanLine) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
+//     lines.forEach((line) => {
+//       const isMarked = line.trim().startsWith("!");
+//       const cleanLine = line.replace(/^\!/, "").trim();
 
-        const textWidth = doc.getTextWidth(cleanLine);
+//       if (isMarked && cleanLine) {
+//         doc.setFont("helvetica", "bold");
+//         doc.setFontSize(8);
 
-        doc.setFillColor(255, 255, 0);
-        doc.rect(x - 1, y - 6, textWidth + 3, 8, "F");
+//         const textWidth = doc.getTextWidth(cleanLine);
 
-        doc.setTextColor(0, 0, 0);
-        doc.text(cleanLine, x, y);
-      }
+//         doc.setFillColor(255, 255, 0);
+//         doc.rect(x - 1, y - 6, textWidth + 3, 8, "F");
 
-      y += lineHeight;
-    });
-  }
+//         doc.setTextColor(0, 0, 0);
+//         doc.text(cleanLine, x, y);
+//       }
 
-  
-  
-
-//   if (data.section !== "body") return;
-//   if (data.column.index !== 2) return;
-
-//   // ✅ Do not custom-draw repeated/continued rows on new page
-// if (data.cell.raw === undefined || data.cell.raw === null) return;
-
-//   const raw = String(data.row.raw[2] || "");
-//   if (!raw.includes("||")) return;
-
-//   const [boldPart, ...restParts] = raw.split("||");
-//   const boldText = boldPart.trim();
-//   const normalText = restParts.join("||").trim();
-
-//   const x = data.cell.x + 3;
-//   let y = data.cell.y + 8;
-//   const maxWidth = data.cell.width - 6;
-//   const lineHeight = 8.5;
-
-//   doc.setTextColor(0, 0, 0);
-
-//   doc.setFont("helvetica", "bold");
-//   doc.text(boldText, x, y);
-
-//   const boldWidth = doc.getTextWidth(boldText + " ");
-
-//   doc.setFont("helvetica", "normal");
-
-//   const normalLines = doc.splitTextToSize(normalText, maxWidth - boldWidth);
-
-//   if (normalLines.length > 0) {
-//     doc.text(normalLines[0], x + boldWidth, y);
+//       y += lineHeight;
+//     });
 //   }
 
-//   y += lineHeight;
+  
+  
 
-  // const remainingText = normalLines.slice(1).join(" ");
-  // const remainingLines = doc.splitTextToSize(remainingText, maxWidth);
+// //   if (data.section !== "body") return;
+// //   if (data.column.index !== 2) return;
 
-  // remainingLines.forEach((line) => {
-  //   const trimmed = line.trim();
+// //   // ✅ Do not custom-draw repeated/continued rows on new page
+// // if (data.cell.raw === undefined || data.cell.raw === null) return;
 
-  //   if (trimmed.startsWith("•")) {
-  //     doc.setFont("helvetica", "italic");
-  //   } else {
-  //     doc.setFont("helvetica", "normal");
-  //   }
+// //   const raw = String(data.row.raw[2] || "");
+// //   if (!raw.includes("||")) return;
 
-  //   doc.text(line, x, y);
-  //   y += lineHeight;
-  // });
-},
+// //   const [boldPart, ...restParts] = raw.split("||");
+// //   const boldText = boldPart.trim();
+// //   const normalText = restParts.join("||").trim();
+
+// //   const x = data.cell.x + 3;
+// //   let y = data.cell.y + 8;
+// //   const maxWidth = data.cell.width - 6;
+// //   const lineHeight = 8.5;
+
+// //   doc.setTextColor(0, 0, 0);
+
+// //   doc.setFont("helvetica", "bold");
+// //   doc.text(boldText, x, y);
+
+// //   const boldWidth = doc.getTextWidth(boldText + " ");
+
+// //   doc.setFont("helvetica", "normal");
+
+// //   const normalLines = doc.splitTextToSize(normalText, maxWidth - boldWidth);
+
+// //   if (normalLines.length > 0) {
+// //     doc.text(normalLines[0], x + boldWidth, y);
+// //   }
+
+// //   y += lineHeight;
+
+//   // const remainingText = normalLines.slice(1).join(" ");
+//   // const remainingLines = doc.splitTextToSize(remainingText, maxWidth);
+
+//   // remainingLines.forEach((line) => {
+//   //   const trimmed = line.trim();
+
+//   //   if (trimmed.startsWith("•")) {
+//   //     doc.setFont("helvetica", "italic");
+//   //   } else {
+//   //     doc.setFont("helvetica", "normal");
+//   //   }
+
+//   //   doc.text(line, x, y);
+//   //   y += lineHeight;
+//   // });
+// // },
 
   
 
