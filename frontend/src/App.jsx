@@ -24,6 +24,7 @@ function App() {
     attention: "",
     location: "",
     status: "Not Started",
+    notes: "",
   };
 
   const emptyLineItem = {
@@ -171,6 +172,7 @@ const formatMoney = (value) => {
       attention: quote.attention || "",
       location: quote.location || "",
       status: quote.status || "Not Started",
+      notes: quote.notes || "",
     });
   };
 
@@ -975,6 +977,15 @@ const downloadQuoteWord = async (quote) => {
           <option value="Won">Won</option>
           <option value="Lost">Lost</option>
         </select>
+
+        <textarea
+  name="notes"
+  placeholder="Quote Notes"
+  value={form.notes}
+  onChange={handleChange}
+  rows={3}
+  style={{ resize: "vertical" }}
+/>
 
         <button className="btn primary">{editingId ? "Update Quote" : "Save Quote"}</button>
       </form>

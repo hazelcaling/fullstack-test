@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from models import db, Note, Quote, LineItem
+from models import db, Quote, LineItem
 from config import Config
 import math
 
@@ -105,6 +105,7 @@ def quote_to_dict(q):
         "to_company": q.to_company,
         "attention": q.attention,
         "location": q.location,
+        "notes": q.notes,
         "line_items": [line_item_to_dict(item) for item in sorted_line_items],
         "status": q.status,
     }
@@ -134,6 +135,7 @@ def create_quote():
         attention=data.get("attention"),
         location=data.get("location"),
         status=data.get("status", "Not Started"),
+        notes=data.get("notes"),
     )
 
     db.session.add(quote)
@@ -158,6 +160,7 @@ def update_quote(id):
     quote.attention = data.get("attention", quote.attention)
     quote.location = data.get("location", quote.location)
     quote.status = data.get("status", quote.status)
+    quote.notes = data.get("notes", quote.notes)
 
     db.session.commit()
 

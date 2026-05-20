@@ -7,15 +7,6 @@ db = SQLAlchemy()
 
 
 # ---------------------------
-# Notes (optional)
-# ---------------------------
-class Note(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(120), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-
-
-# ---------------------------
 # Quote Number Generator
 # ---------------------------
 def generate_unique_quote_number():
@@ -61,6 +52,8 @@ class Quote(db.Model):
     location = db.Column(db.String(100))
 
     status = db.Column(db.String(30), default="Not Started")
+
+    notes = db.Column(db.Text)
 
     created_at = db.Column(
         db.DateTime,
@@ -126,3 +119,111 @@ class LineItem(db.Model):
 
     included = db.Column(db.Boolean, default=False)
 
+class NotesLibrary(db.Model):
+    __tablename__ = "notes_library"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    item = db.Column(db.String(100))
+
+    category = db.Column(db.String(100), nullable=True)
+
+    series = db.Column(db.String(100), nullable=True)
+
+    model = db.Column(db.String(100), nullable=True)
+
+    text = db.Column(db.Text)
+
+    note_type = db.Column(db.String(50))
+    # standard
+    # additional
+    # exception
+    # internal
+
+    default_selected = db.Column(db.Boolean, default=False)
+
+    sort_order = db.Column(db.Integer, default=0)
+
+    is_active = db.Column(db.Boolean, default=True)
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+class Product(db.Model):
+    __tablename__ = "products"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    vendor = db.Column(db.String(100))
+    manufacturer = db.Column(db.String(100))
+
+    category = db.Column(db.String(100))
+    # boiler
+    # pump
+    # tank
+    # heat exchanger
+
+    type = db.Column(db.String(100), nullable=True)
+    # condensing
+    # end suction
+    # storage tank
+
+    series = db.Column(db.String(100), nullable=True)
+    # Hi Delta
+    # 4280
+
+    model = db.Column(db.String(100), nullable=True)
+
+    part_number = db.Column(
+        db.String(100),
+        unique=True,
+        nullable=True
+    )
+
+    description = db.Column(db.Text)
+
+    list_price = db.Column(
+        db.Numeric(10, 2),
+        default=0
+    )
+
+    surcharge = db.Column(
+        db.Numeric(10, 4),
+        default=0
+    )
+
+    multiplier = db.Column(
+        db.Numeric(10, 4),
+        default=1
+    )
+
+    net_cost = db.Column(
+        db.Numeric(10, 2),
+        default=0
+    )
+
+    notes = db.Column(db.Text)
+
+    is_active = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
