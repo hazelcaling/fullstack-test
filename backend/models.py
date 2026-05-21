@@ -90,6 +90,13 @@ class LineItem(db.Model):
         nullable=False
     )
 
+    notes_selected = db.relationship(
+        "LineItemNote",
+        backref="line_item",
+        cascade="all, delete-orphan",
+        order_by="LineItemNote.sort_order"
+   )
+
     sort_order = db.Column(db.Integer, default=0)
 
     # Basic info
@@ -97,6 +104,12 @@ class LineItem(db.Model):
     vendor = db.Column(db.String(100))
     qty = db.Column(db.Integer, default=1)
     description = db.Column(db.Text)
+
+    item = db.Column(db.String(100), nullable=True)
+    type = db.Column(db.String(100), nullable=True)
+    series = db.Column(db.String(100), nullable=True)
+    model = db.Column(db.String(100), nullable=True)
+    part_number = db.Column(db.String(100), nullable=True)
 
     # Pricing inputs
     list_price = db.Column(db.Numeric(10, 2), default=0)
@@ -125,7 +138,7 @@ class NotesLibrary(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     item = db.Column(db.String(100))
-
+    type = db.Column(db.String(100), nullable=True)
     category = db.Column(db.String(100), nullable=True)
 
     series = db.Column(db.String(100), nullable=True)
@@ -162,16 +175,18 @@ class Product(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    name = db.Column(db.String(200))
+
     vendor = db.Column(db.String(100))
     manufacturer = db.Column(db.String(100))
 
-    category = db.Column(db.String(100))
+    category = db.Column(db.String(50))
     # boiler
     # pump
     # tank
     # heat exchanger
 
-    type = db.Column(db.String(100), nullable=True)
+    type = db.Column(db.String(50), nullable=True)
     # condensing
     # end suction
     # storage tank
@@ -206,7 +221,7 @@ class Product(db.Model):
     )
 
     net_cost = db.Column(
-        db.Numeric(10, 2),
+        db.Numeric(12, 2),
         default=0
     )
 
@@ -222,6 +237,105 @@ class Product(db.Model):
         default=datetime.utcnow
     )
 
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+class LineItemNote(db.Model):
+    __tablename__ = "line_item_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    line_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("line_items.id"),
+        nullable=False
+    )
+
+    note_library_id = db.Column(
+        db.Integer,
+        db.ForeignKey("notes_library.id"),
+        nullable=True
+    )
+
+    category = db.Column(db.String(100), nullable=True)
+    label = db.Column(db.String(200), nullable=True)
+    text = db.Column(db.Text, nullable=False)
+
+    is_custom = db.Column(db.Boolean, default=False)
+    is_selected = db.Column(db.Boolean, default=True)
+
+    sort_order = db.Column(db.Integer, default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+
+class Company(db.Model):
+    __tablename__ = "companies"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    name = db.Column(db.String(200), nullable=False)
+    type = db.Column(db.String(50), nullable=True)
+
+    address1 = db.Column(db.String(200), nullable=True)
+    address2 = db.Column(db.String(200), nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(50), nullable=True)
+    zipcode = db.Column(db.String(20), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+
+    website = db.Column(db.String(200), nullable=True)
+    account_number = db.Column(db.String(100), nullable=True)
+    tax_id = db.Column(db.String(100), nullable=True)
+    payment_terms = db.Column(db.String(100), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+    contacts = db.relationship(
+        "Contact",
+        backref="company",
+        cascade="all, delete-orphan"
+    )
+
+
+class Contact(db.Model):
+    __tablename__ = "contacts"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    company_id = db.Column(
+        db.Integer,
+        db.ForeignKey("companies.id"),
+        nullable=False
+    )
+
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=True)
+
+    role = db.Column(db.String(100), nullable=True)
+    email = db.Column(db.String(150), nullable=True)
+    tel = db.Column(db.String(50), nullable=True)
+    mobile = db.Column(db.String(50), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime,
         default=datetime.utcnow,
