@@ -1,8 +1,17 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from models import db, Quote, LineItem
+from sqlalchemy import or_
+from models import (
+    db,
+    Quote,
+    LineItem,
+    Product,
+    NotesLibrary,
+    LineItemNote,
+    Company,
+    Contact,
+)
 from config import Config
-import math
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -14,13 +23,24 @@ with app.app_context():
     db.create_all()
 
 
+# ---------------------------
+# Helpers
+# ---------------------------
 def money(value):
     return float(value or 0)
+
 
 def num(value, default=0):
     if value is None or value == "":
         return default
     return float(value)
+
+
+def bool_value(value, default=False):
+    if value is None:
+        return default
+    return bool(value)
+
 
 def round_to_preferred(value):
     return round(value)
@@ -35,18 +55,28 @@ def calculate_line_item(item):
     startup = float(item.startup or 0)
     surcharge = float(item.surcharge or 0)
 
-    # ✅ CORRECT formula
     net_cost = list_price * (1 + surcharge) * multiplier
-
     raw_sell = (net_cost * (1 + markup)) + freight + startup
-
     sell_price = round_to_preferred(raw_sell)
-
     total_price = sell_price * qty
 
     item.net_cost = round(net_cost, 2)
     item.sell_price = round(sell_price, 2)
     item.total_price = round(total_price, 2)
+
+
+def line_item_note_to_dict(note):
+    return {
+        "id": note.id,
+        "line_item_id": note.line_item_id,
+        "note_library_id": note.note_library_id,
+        "category": note.category,
+        "label": note.label,
+        "text": note.text,
+        "is_custom": note.is_custom,
+        "is_selected": note.is_selected,
+        "sort_order": note.sort_order,
+    }
 
 
 def line_item_to_dict(item):
@@ -58,6 +88,11 @@ def line_item_to_dict(item):
         "vendor": item.vendor,
         "qty": item.qty,
         "description": item.description,
+        "item": item.item,
+        "type": item.type,
+        "series": item.series,
+        "model": item.model,
+        "part_number": item.part_number,
         "list_price": money(item.list_price),
         "multiplier": money(item.multiplier),
         "markup": money(item.markup),
@@ -70,34 +105,19 @@ def line_item_to_dict(item):
         "terms": item.terms,
         "notes": item.notes,
         "included": item.included,
-        
+        "notes_selected": [
+            line_item_note_to_dict(n)
+            for n in sorted(item.notes_selected, key=lambda n: n.sort_order or 0)
+        ],
     }
 
 
-# def quote_to_dict(q):
-#     return {
-#         "id": q.id,
-#         "date": q.date.strftime("%m/%d/%Y"),
-#         "quote_number": q.quote_number,
-#         "bid_date": q.bid_date,
-#         "contact": q.contact or [],
-#         "project": q.project,
-#         "to_company": q.to_company,
-#         "attention": q.attention,
-#         "location": q.location,
-#         "line_items": [line_item_to_dict(item) for item in q.line_items],
-#         "status": q.status,
-#     }
-
 def quote_to_dict(q):
-    sorted_line_items = sorted(
-        q.line_items,
-        key=lambda item: item.sort_order or 0
-    )
+    sorted_line_items = sorted(q.line_items, key=lambda item: item.sort_order or 0)
 
     return {
         "id": q.id,
-        "date": q.date.strftime("%m/%d/%Y"),
+        "date": q.date.strftime("%m/%d/%Y") if q.date else "",
         "quote_number": q.quote_number,
         "bid_date": q.bid_date,
         "contact": q.contact or [],
@@ -106,27 +126,155 @@ def quote_to_dict(q):
         "attention": q.attention,
         "location": q.location,
         "notes": q.notes,
-        "line_items": [line_item_to_dict(item) for item in sorted_line_items],
         "status": q.status,
+        "created_at": q.created_at.strftime("%m/%d/%Y") if q.created_at else "",
+        "updated_at": q.updated_at.strftime("%m/%d/%Y") if q.updated_at else "",
+        "line_items": [line_item_to_dict(item) for item in sorted_line_items],
+        "total": sum(float(item.total_price or 0) for item in sorted_line_items),
     }
 
 
+def product_to_dict(p):
+    return {
+        "id": p.id,
+        "name": p.name,
+        "vendor": p.vendor,
+        "manufacturer": p.manufacturer,
+        "category": p.category,
+        "type": p.type,
+        "series": p.series,
+        "model": p.model,
+        "part_number": p.part_number,
+        "description": p.description,
+        "list_price": money(p.list_price),
+        "surcharge": money(p.surcharge),
+        "multiplier": money(p.multiplier),
+        "net_cost": money(p.net_cost),
+        "notes": p.notes,
+        "is_active": p.is_active,
+    }
+
+
+def note_to_dict(n):
+    return {
+        "id": n.id,
+        "item": n.item,
+        "type": n.type,
+        "category": n.category,
+        "series": n.series,
+        "model": n.model,
+        "text": n.text,
+        "note_type": n.note_type,
+        "default_selected": n.default_selected,
+        "sort_order": n.sort_order,
+        "is_active": n.is_active,
+    }
+
+
+def company_to_dict(c, include_contacts=True):
+    data = {
+        "id": c.id,
+        "name": c.name,
+        "type": c.type,
+        "address1": c.address1,
+        "address2": c.address2,
+        "city": c.city,
+        "state": c.state,
+        "zipcode": c.zipcode,
+        "notes": c.notes,
+        "is_active": c.is_active,
+        "website": c.website,
+        "account_number": c.account_number,
+        "tax_id": c.tax_id,
+        "payment_terms": c.payment_terms,
+    }
+    if include_contacts:
+        data["contacts"] = [contact_to_dict(x) for x in c.contacts]
+    return data
+
+
+def contact_to_dict(c):
+    return {
+        "id": c.id,
+        "company_id": c.company_id,
+        "company_name": c.company.name if c.company else "",
+        "first_name": c.first_name,
+        "last_name": c.last_name,
+        "role": c.role,
+        "email": c.email,
+        "tel": c.tel,
+        "mobile": c.mobile,
+        "notes": c.notes,
+        "is_active": c.is_active,
+    }
+
+
+def apply_product_to_line_item(item, product):
+    item.item = product.category
+    item.type = product.type
+    item.series = product.series
+    item.model = product.model
+    item.part_number = product.part_number
+    item.vendor = product.vendor
+    item.description = product.description
+    item.list_price = product.list_price or 0
+    item.multiplier = product.multiplier or 1
+    item.surcharge = product.surcharge or 0
+
+
+# ---------------------------
+# Quotes
+# ---------------------------
 @app.route("/quotes", methods=["GET"])
 def get_quotes():
-    quotes = Quote.query.order_by(Quote.id.desc()).all()
-    return jsonify([quote_to_dict(q) for q in quotes])
+    search = request.args.get("search", "").strip()
+    status = request.args.get("status", "").strip()
+    sort_by = request.args.get("sort_by", "id")
+    direction = request.args.get("direction", "desc")
+
+    query = Quote.query
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                Quote.quote_number.ilike(like),
+                Quote.project.ilike(like),
+                Quote.to_company.ilike(like),
+                Quote.attention.ilike(like),
+                Quote.location.ilike(like),
+                Quote.status.ilike(like),
+            )
+        )
+
+    if status:
+        query = query.filter(Quote.status == status)
+
+    sort_map = {
+        "id": Quote.id,
+        "quote_number": Quote.quote_number,
+        "bid_date": Quote.bid_date,
+        "created_at": Quote.created_at,
+        "status": Quote.status,
+        "project": Quote.project,
+        "to_company": Quote.to_company,
+        "attention": Quote.attention,
+        "location": Quote.location,
+    }
+    col = sort_map.get(sort_by, Quote.id)
+    query = query.order_by(col.asc() if direction == "asc" else col.desc())
+
+    return jsonify([quote_to_dict(q) for q in query.all()])
 
 
 @app.route("/quotes/<int:id>", methods=["GET"])
 def get_quote(id):
-    quote = Quote.query.get_or_404(id)
-    return jsonify(quote_to_dict(quote))
+    return jsonify(quote_to_dict(Quote.query.get_or_404(id)))
 
 
 @app.route("/quotes", methods=["POST"])
 def create_quote():
-    data = request.json
-
+    data = request.json or {}
     quote = Quote(
         bid_date=data.get("bid_date", "N/A"),
         contact=data.get("contact", []),
@@ -137,22 +285,16 @@ def create_quote():
         status=data.get("status", "Not Started"),
         notes=data.get("notes"),
     )
-
     db.session.add(quote)
     db.session.commit()
-
     return jsonify(quote_to_dict(quote)), 201
 
 
 @app.route("/quotes/<int:id>", methods=["PUT"])
 def update_quote(id):
     quote = Quote.query.get_or_404(id)
-    data = request.json
+    data = request.json or {}
 
-    print("🔥 PUT /quotes/<id> received:")
-    print(request.json)
-
-    quote.date = data.get("date", quote.date)  # ✅ ADD THIS LINE
     quote.bid_date = data.get("bid_date", quote.bid_date)
     quote.contact = data.get("contact", quote.contact or [])
     quote.project = data.get("project", quote.project)
@@ -163,34 +305,30 @@ def update_quote(id):
     quote.notes = data.get("notes", quote.notes)
 
     db.session.commit()
-
-    print("🔥 Updated quote saved:", quote)
-
     return jsonify(quote_to_dict(quote))
 
 
 @app.route("/quotes/<int:id>", methods=["DELETE"])
 def delete_quote(id):
     quote = Quote.query.get_or_404(id)
-
-    LineItem.query.filter_by(quote_id=id).delete()
     db.session.delete(quote)
     db.session.commit()
+    return jsonify({"message": "Quote deleted"})
 
-    return jsonify({"message": "Quote deleted"}), 200
 
+# ---------------------------
+# Line Items
+# ---------------------------
 @app.route("/quotes/<int:quote_id>/line-items", methods=["POST"])
 def create_line_item(quote_id):
     Quote.query.get_or_404(quote_id)
-    data = request.json
+    data = request.json or {}
 
     last_item = (
-        LineItem.query
-        .filter_by(quote_id=quote_id)
+        LineItem.query.filter_by(quote_id=quote_id)
         .order_by(LineItem.sort_order.desc())
         .first()
     )
-
     next_sort_order = (last_item.sort_order + 1) if last_item else 1
 
     item = LineItem(
@@ -200,6 +338,11 @@ def create_line_item(quote_id):
         vendor=data.get("vendor"),
         qty=num(data.get("qty"), 1),
         description=data.get("description"),
+        item=data.get("item"),
+        type=data.get("type"),
+        series=data.get("series"),
+        model=data.get("model"),
+        part_number=data.get("part_number"),
         list_price=num(data.get("list_price"), 0),
         multiplier=num(data.get("multiplier"), 1),
         markup=num(data.get("markup"), 0),
@@ -208,59 +351,49 @@ def create_line_item(quote_id):
         surcharge=num(data.get("surcharge"), 0),
         terms=data.get("terms", "FFA"),
         notes=data.get("notes"),
-        included=data.get("included", False),
+        included=bool_value(data.get("included"), False),
     )
 
     calculate_line_item(item)
-
     db.session.add(item)
     db.session.commit()
-
     return jsonify(line_item_to_dict(item)), 201
 
 
 @app.route("/line-items/<int:id>", methods=["PUT"])
 def update_line_item(id):
     item = LineItem.query.get_or_404(id)
-    data = request.json
+    data = request.json or {}
 
-    item.tag = data.get("tag", item.tag)
-    item.vendor = data.get("vendor", item.vendor)
+    for field in ["tag", "vendor", "description", "item", "type", "series", "model", "part_number", "terms", "notes"]:
+        setattr(item, field, data.get(field, getattr(item, field)))
+
     item.qty = num(data.get("qty"), item.qty)
-    item.description = data.get("description", item.description)
     item.list_price = num(data.get("list_price"), item.list_price)
     item.multiplier = num(data.get("multiplier"), item.multiplier)
     item.markup = num(data.get("markup"), item.markup)
     item.freight = num(data.get("freight"), item.freight)
     item.startup = num(data.get("startup"), item.startup)
-    item.surcharge = num(data.get("surcharge"), 0)
-    item.terms = data.get("terms", item.terms)
-    item.notes = data.get("notes", item.notes)
-    item.included = data.get("included", item.included)
+    item.surcharge = num(data.get("surcharge"), item.surcharge)
+    item.included = bool_value(data.get("included"), item.included)
 
     calculate_line_item(item)
-
     db.session.commit()
-
     return jsonify(line_item_to_dict(item))
 
 
 @app.route("/line-items/<int:id>", methods=["DELETE"])
 def delete_line_item(id):
     item = LineItem.query.get_or_404(id)
-
     db.session.delete(item)
     db.session.commit()
-
-    return jsonify({"message": "Line item deleted"}), 200
+    return jsonify({"message": "Line item deleted"})
 
 
 @app.route("/quotes/<int:quote_id>/line-items/reorder", methods=["PUT"])
 def reorder_line_items(quote_id):
     Quote.query.get_or_404(quote_id)
-    data = request.json
-
-    item_ids = data.get("item_ids", [])
+    item_ids = (request.json or {}).get("item_ids", [])
 
     for index, item_id in enumerate(item_ids):
         item = LineItem.query.filter_by(id=item_id, quote_id=quote_id).first()
@@ -268,9 +401,289 @@ def reorder_line_items(quote_id):
             item.sort_order = index + 1
 
     db.session.commit()
+    return jsonify(quote_to_dict(Quote.query.get_or_404(quote_id)))
 
-    quote = Quote.query.get_or_404(quote_id)
-    return jsonify(quote_to_dict(quote))
+
+@app.route("/line-items/<int:line_item_id>/notes", methods=["PUT"])
+def replace_line_item_notes(line_item_id):
+    item = LineItem.query.get_or_404(line_item_id)
+    data = request.json or {}
+    notes = data.get("notes", [])
+
+    LineItemNote.query.filter_by(line_item_id=line_item_id).delete()
+
+    for index, note_data in enumerate(notes):
+        note = LineItemNote(
+            line_item_id=item.id,
+            note_library_id=note_data.get("note_library_id"),
+            category=note_data.get("category"),
+            label=note_data.get("label"),
+            text=note_data.get("text"),
+            is_custom=bool_value(note_data.get("is_custom"), False),
+            is_selected=bool_value(note_data.get("is_selected"), True),
+            sort_order=note_data.get("sort_order", index + 1),
+        )
+        db.session.add(note)
+
+    db.session.commit()
+    return jsonify(line_item_to_dict(item))
+
+
+# ---------------------------
+# Products
+# ---------------------------
+@app.route("/products", methods=["GET"])
+def get_products():
+    search = request.args.get("search", "").strip()
+    query = Product.query
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                Product.name.ilike(like),
+                Product.vendor.ilike(like),
+                Product.manufacturer.ilike(like),
+                Product.category.ilike(like),
+                Product.type.ilike(like),
+                Product.series.ilike(like),
+                Product.model.ilike(like),
+                Product.part_number.ilike(like),
+                Product.description.ilike(like),
+            )
+        )
+    return jsonify([product_to_dict(p) for p in query.order_by(Product.id.desc()).all()])
+
+
+@app.route("/products", methods=["POST"])
+def create_product():
+    p = Product()
+    data = request.json or {}
+    for field in ["name", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
+        setattr(p, field, data.get(field))
+    p.list_price = num(data.get("list_price"), 0)
+    p.multiplier = num(data.get("multiplier"), 1)
+    p.surcharge = num(data.get("surcharge"), 0)
+    p.net_cost = num(data.get("net_cost"), 0)
+    p.is_active = bool_value(data.get("is_active"), True)
+    db.session.add(p)
+    db.session.commit()
+    return jsonify(product_to_dict(p)), 201
+
+
+@app.route("/products/<int:id>", methods=["PUT"])
+def update_product(id):
+    p = Product.query.get_or_404(id)
+    data = request.json or {}
+    for field in ["name", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
+        setattr(p, field, data.get(field, getattr(p, field)))
+    p.list_price = num(data.get("list_price"), p.list_price)
+    p.multiplier = num(data.get("multiplier"), p.multiplier)
+    p.surcharge = num(data.get("surcharge"), p.surcharge)
+    p.net_cost = num(data.get("net_cost"), p.net_cost)
+    p.is_active = bool_value(data.get("is_active"), p.is_active)
+    db.session.commit()
+    return jsonify(product_to_dict(p))
+
+
+@app.route("/products/<int:id>", methods=["DELETE"])
+def delete_product(id):
+    p = Product.query.get_or_404(id)
+    db.session.delete(p)
+    db.session.commit()
+    return jsonify({"message": "Product deleted"})
+
+
+@app.route("/products/lookup", methods=["GET"])
+def lookup_product():
+    term = request.args.get("term", "").strip()
+    if not term:
+        return jsonify([])
+
+    like = f"%{term}%"
+    products = Product.query.filter(
+        or_(
+            Product.item.ilike(like) if hasattr(Product, "item") else Product.category.ilike(like),
+            Product.name.ilike(like),
+            Product.series.ilike(like),
+            Product.model.ilike(like),
+            Product.part_number.ilike(like),
+        )
+    ).limit(15).all()
+
+    return jsonify([product_to_dict(p) for p in products])
+
+
+# ---------------------------
+# Notes Library
+# ---------------------------
+@app.route("/notes-library", methods=["GET"])
+def get_notes():
+    search = request.args.get("search", "").strip()
+    item = request.args.get("item", "").strip()
+    type_ = request.args.get("type", "").strip()
+    series = request.args.get("series", "").strip()
+    model = request.args.get("model", "").strip()
+    note_type = request.args.get("note_type", "").strip()
+
+    query = NotesLibrary.query
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                NotesLibrary.item.ilike(like),
+                NotesLibrary.type.ilike(like),
+                NotesLibrary.category.ilike(like),
+                NotesLibrary.series.ilike(like),
+                NotesLibrary.model.ilike(like),
+                NotesLibrary.text.ilike(like),
+                NotesLibrary.note_type.ilike(like),
+            )
+        )
+
+    if item:
+        query = query.filter(or_(NotesLibrary.item == item, NotesLibrary.item.is_(None)))
+    if type_:
+        query = query.filter(or_(NotesLibrary.type == type_, NotesLibrary.type.is_(None)))
+    if series:
+        query = query.filter(or_(NotesLibrary.series == series, NotesLibrary.series.is_(None)))
+    if model:
+        query = query.filter(or_(NotesLibrary.model == model, NotesLibrary.model.is_(None)))
+    if note_type:
+        query = query.filter(NotesLibrary.note_type == note_type)
+
+    return jsonify([note_to_dict(n) for n in query.order_by(NotesLibrary.sort_order.asc(), NotesLibrary.id.desc()).all()])
+
+
+@app.route("/notes-library", methods=["POST"])
+def create_note():
+    n = NotesLibrary()
+    data = request.json or {}
+    for field in ["item", "type", "category", "series", "model", "text", "note_type"]:
+        setattr(n, field, data.get(field))
+    n.default_selected = bool_value(data.get("default_selected"), False)
+    n.sort_order = int(data.get("sort_order") or 0)
+    n.is_active = bool_value(data.get("is_active"), True)
+    db.session.add(n)
+    db.session.commit()
+    return jsonify(note_to_dict(n)), 201
+
+
+@app.route("/notes-library/<int:id>", methods=["PUT"])
+def update_note(id):
+    n = NotesLibrary.query.get_or_404(id)
+    data = request.json or {}
+    for field in ["item", "type", "category", "series", "model", "text", "note_type"]:
+        setattr(n, field, data.get(field, getattr(n, field)))
+    n.default_selected = bool_value(data.get("default_selected"), n.default_selected)
+    n.sort_order = int(data.get("sort_order") or n.sort_order or 0)
+    n.is_active = bool_value(data.get("is_active"), n.is_active)
+    db.session.commit()
+    return jsonify(note_to_dict(n))
+
+
+@app.route("/notes-library/<int:id>", methods=["DELETE"])
+def delete_note(id):
+    n = NotesLibrary.query.get_or_404(id)
+    db.session.delete(n)
+    db.session.commit()
+    return jsonify({"message": "Note deleted"})
+
+
+# ---------------------------
+# Companies / Contacts
+# ---------------------------
+@app.route("/companies", methods=["GET"])
+def get_companies():
+    search = request.args.get("search", "").strip()
+    query = Company.query
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(Company.name.ilike(like), Company.type.ilike(like), Company.city.ilike(like), Company.notes.ilike(like)))
+    return jsonify([company_to_dict(c) for c in query.order_by(Company.name.asc()).all()])
+
+
+@app.route("/companies", methods=["POST"])
+def create_company():
+    c = Company()
+    data = request.json or {}
+    for field in ["name", "type", "address1", "address2", "city", "state", "zipcode", "notes", "website", "account_number", "tax_id", "payment_terms"]:
+        setattr(c, field, data.get(field))
+    c.is_active = bool_value(data.get("is_active"), True)
+    db.session.add(c)
+    db.session.commit()
+    return jsonify(company_to_dict(c)), 201
+
+
+@app.route("/companies/<int:id>", methods=["PUT"])
+def update_company(id):
+    c = Company.query.get_or_404(id)
+    data = request.json or {}
+    for field in ["name", "type", "address1", "address2", "city", "state", "zipcode", "notes", "website", "account_number", "tax_id", "payment_terms"]:
+        setattr(c, field, data.get(field, getattr(c, field)))
+    c.is_active = bool_value(data.get("is_active"), c.is_active)
+    db.session.commit()
+    return jsonify(company_to_dict(c))
+
+
+@app.route("/companies/<int:id>", methods=["DELETE"])
+def delete_company(id):
+    c = Company.query.get_or_404(id)
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({"message": "Company deleted"})
+
+
+@app.route("/contacts", methods=["GET"])
+def get_contacts():
+    search = request.args.get("search", "").strip()
+    company_id = request.args.get("company_id")
+    query = Contact.query
+    if company_id:
+        query = query.filter(Contact.company_id == int(company_id))
+    if search:
+        like = f"%{search}%"
+        query = query.outerjoin(Company).filter(
+            or_(
+                Contact.first_name.ilike(like),
+                Contact.last_name.ilike(like),
+                Contact.email.ilike(like),
+                Contact.role.ilike(like),
+                Company.name.ilike(like),
+            )
+        )
+    return jsonify([contact_to_dict(c) for c in query.order_by(Contact.first_name.asc()).all()])
+
+
+@app.route("/contacts", methods=["POST"])
+def create_contact():
+    c = Contact()
+    data = request.json or {}
+    for field in ["company_id", "first_name", "last_name", "role", "email", "tel", "mobile", "notes"]:
+        setattr(c, field, data.get(field))
+    c.is_active = bool_value(data.get("is_active"), True)
+    db.session.add(c)
+    db.session.commit()
+    return jsonify(contact_to_dict(c)), 201
+
+
+@app.route("/contacts/<int:id>", methods=["PUT"])
+def update_contact(id):
+    c = Contact.query.get_or_404(id)
+    data = request.json or {}
+    for field in ["company_id", "first_name", "last_name", "role", "email", "tel", "mobile", "notes"]:
+        setattr(c, field, data.get(field, getattr(c, field)))
+    c.is_active = bool_value(data.get("is_active"), c.is_active)
+    db.session.commit()
+    return jsonify(contact_to_dict(c))
+
+
+@app.route("/contacts/<int:id>", methods=["DELETE"])
+def delete_contact(id):
+    c = Contact.query.get_or_404(id)
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({"message": "Contact deleted"})
 
 
 if __name__ == "__main__":

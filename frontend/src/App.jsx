@@ -1,1257 +1,1012 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import "./App.css";
-import outsideSalesNames from "./data/contacts";
-import hteLogo from "./assets/hte-logo.jpg";
-import hteAddress from "./assets/hte-address.png";
-import { PDFDocument } from "pdf-lib";
-import lastTwoPagesPdf from "./assets/last two page.pdf";
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType } from "docx";
 
 const API = "http://localhost:5000";
 
-function App() {
-  const today = new Date().toLocaleDateString("en-US");
+const emptyQuote = {
+  bid_date: "N/A",
+  contact: [],
+  project: "",
+  to_company: "",
+  attention: "",
+  location: "",
+  status: "Not Started",
+  notes: "",
+};
 
-  const emptyForm = {
-    date: "",
-    bid_date: "N/A",
-    contact: [],
-    project: "",
-    to_company: "",
-    attention: "",
-    location: "",
-    status: "Not Started",
-    notes: "",
-  };
+const emptyLineItem = {
+  tag: "",
+  vendor: "",
+  qty: 1,
+  description: "",
+  item: "",
+  type: "",
+  series: "",
+  model: "",
+  part_number: "",
+  list_price: 0,
+  multiplier: 1,
+  markup: 0,
+  freight: 0,
+  startup: 0,
+  surcharge: 0,
+  terms: "FFA",
+  notes: "",
+  included: false,
+};
 
-  const emptyLineItem = {
-    tag: "",
-    vendor: "",
-    qty: 1,
-    description: "",
-    list_price: 0,
-    multiplier: 1,
-    markup: 0,
-    freight: 0,
-    startup: 0,
-    surcharge: 0,
-    terms: "FFA",
-    notes: "",
-    included: false,
-  };
+const emptyProduct = {
+  name: "",
+  vendor: "",
+  manufacturer: "",
+  category: "",
+  type: "",
+  series: "",
+  model: "",
+  part_number: "",
+  description: "",
+  list_price: 0,
+  multiplier: 1,
+  surcharge: 0,
+  net_cost: 0,
+  notes: "",
+  is_active: true,
+};
+
+const emptyNote = {
+  item: "",
+  type: "",
+  category: "",
+  series: "",
+  model: "",
+  text: "",
+  note_type: "standard",
+  default_selected: false,
+  sort_order: 0,
+  is_active: true,
+};
+
+const emptyCompany = {
+  name: "",
+  type: "",
+  address1: "",
+  address2: "",
+  city: "",
+  state: "",
+  zipcode: "",
+  notes: "",
+  website: "",
+  account_number: "",
+  tax_id: "",
+  payment_terms: "",
+  is_active: true,
+};
+
+const emptyContact = {
+  company_id: "",
+  first_name: "",
+  last_name: "",
+  role: "",
+  email: "",
+  tel: "",
+  mobile: "",
+  notes: "",
+  is_active: true,
+};
+
+function money(value) {
+  const n = Number(value || 0);
+  if (n === 0) return "";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatContact(contact) {
+  if (!contact) return "";
+  if (Array.isArray(contact)) return contact.join(", ");
+  try {
+    const parsed = JSON.parse(contact);
+    return Array.isArray(parsed) ? parsed.join(", ") : String(contact);
+  } catch {
+    return String(contact);
+  }
+}
+
+function getLineDescription(item) {
+  const selectedNotes = (item.notes_selected || [])
+    .filter((n) => n.is_selected)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map((n) => `• ${n.text}`);
+  return [item.description, ...selectedNotes].filter(Boolean).join("\n");
+}
+
+export default function App() {
+  const [tab, setTab] = useState("builder");
 
   const [quotes, setQuotes] = useState([]);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
-  const [savedQuote, setSavedQuote] = useState(null);
-  const [lineItemForm, setLineItemForm] = useState(emptyLineItem);
-  const [editingLineItemId, setEditingLineItemId] = useState(null);
+  const [quoteForm, setQuoteForm] = useState(emptyQuote);
+  const [editingQuoteId, setEditingQuoteId] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
 
+  const [lineItemForm, setLineItemForm] = useState(emptyLineItem);
+  const [editingLineItemId, setEditingLineItemId] = useState(null);
   const [draggedLineItem, setDraggedLineItem] = useState(null);
 
-  const fetchQuotes = async () => {
-    const res = await axios.get(`${API}/quotes`);
-    setQuotes(res.data);
-  };
+  const [companies, setCompanies] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [notes, setNotes] = useState([]);
+
+  const [lineProductResults, setLineProductResults] = useState([]);
+  const [lineProductSearchMessage, setLineProductSearchMessage] = useState("");
+
+  const [dashSearch, setDashSearch] = useState("");
+  const [dashStatus, setDashStatus] = useState("");
+  const [dashSort, setDashSort] = useState("id");
+  const [dashDirection, setDashDirection] = useState("desc");
+
+  const [productSearch, setProductSearch] = useState("");
+  const [noteSearch, setNoteSearch] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+
+  const [companyResults, setCompanyResults] = useState([]);
+const [companySearchMessage, setCompanySearchMessage] = useState("");
+const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+
+const [contactResults, setContactResults] = useState([]);
+const [contactSearchMessage, setContactSearchMessage] = useState("");
+
+  const [productForm, setProductForm] = useState(emptyProduct);
+  const [editingProductId, setEditingProductId] = useState(null);
+
+  const [noteForm, setNoteForm] = useState(emptyNote);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+
+  const [companyForm, setCompanyForm] = useState(emptyCompany);
+  const [editingCompanyId, setEditingCompanyId] = useState(null);
+
+  const [contactForm, setContactForm] = useState(emptyContact);
+  const [editingContactId, setEditingContactId] = useState(null);
+
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [noteLineItem, setNoteLineItem] = useState(null);
+  const [noteDrafts, setNoteDrafts] = useState([]);
+
+  const activeQuote = quotes.find((q) => q.id === activeQuoteId);
+
+  const calculatedPreview = useMemo(() => {
+    const list = Number(lineItemForm.list_price || 0);
+    const multiplier = Number(lineItemForm.multiplier || 1);
+    const markup = Number(lineItemForm.markup || 0);
+    const freight = Number(lineItemForm.freight || 0);
+    const startup = Number(lineItemForm.startup || 0);
+    const surcharge = Number(lineItemForm.surcharge || 0);
+    const qty = Number(lineItemForm.qty || 1);
+    const net = list * (1 + surcharge) * multiplier;
+    const sell = Math.round(net * (1 + markup) + freight + startup);
+    return { net, sell, total: sell * qty };
+  }, [lineItemForm]);
 
   useEffect(() => {
     fetchQuotes();
+    fetchCompanies();
+    fetchContacts();
+    fetchProducts();
+    fetchNotes();
   }, []);
 
-const formatMoney = (value) => {
-  const num = Number(value || 0);
+  async function fetchQuotes(params = {}) {
+    const res = await axios.get(`${API}/quotes`, { params });
+    setQuotes(res.data);
+  }
 
-  if (num === 0) return ""; // ✅ hide $0.00
-
-  return num.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-};
-
-  const formatContact = (contact) => {
-    if (!contact) return "";
-    if (Array.isArray(contact)) return contact.join(", ");
-
-    if (typeof contact === "string") {
-      try {
-        const parsed = JSON.parse(contact);
-        if (Array.isArray(parsed)) return parsed.join(", ");
-      } catch {
-        return contact
-          .replace(/[\[\]{}"]/g, "")
-          .split(",")
-          .map((name) => name.trim())
-          .filter(Boolean)
-          .join(", ");
-      }
-    }
-
-    return "";
-  };
-
-  const normalizeContact = (contact) => {
-    if (!contact) return [];
-    if (Array.isArray(contact)) return contact;
-
-    return contact
-      .replace(/[\[\]{}"]/g, "")
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean);
-  };
-
-  const quoteTotal = (quote) =>
-    (quote.line_items || []).reduce(
-      (sum, item) => sum + Number(item.total_price || 0),
-      0
-    );
-
-  const quoteTermsText = (quote) => {
-    const terms = [
-      ...new Set((quote.line_items || []).map((item) => item.terms).filter(Boolean)),
-    ];
-
-    if (terms.length === 0) return "FFA ORIGIN";
-    if (terms.length === 1) return `${terms[0]} ORIGIN`;
-    return "TERMS VARY BY LINE ITEM";
-  };
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleContactChange = (e) => {
-    const selected = Array.from(e.target.selectedOptions, (option) => option.value);
-    setForm({ ...form, contact: selected });
-  };
-
-  const handleLineItemChange = (e) => {
-    setLineItemForm({ ...lineItemForm, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmitQuote = async (e) => {
-    e.preventDefault();
-
-    const payload = {
-      ...form,
-      contact: normalizeContact(form.contact),
-    };
-
-    if (editingId) {
-      const res = await axios.put(`${API}/quotes/${editingId}`, payload);
-      setSavedQuote(res.data);
-      setEditingId(null);
-    } else {
-      const res = await axios.post(`${API}/quotes`, payload);
-      setSavedQuote(res.data);
-      setActiveQuoteId(res.data.id);
-    }
-
-    setForm(emptyForm);
-    fetchQuotes();
-  };
-
-
-
-  const handleEditQuote = (quote) => {
-    setEditingId(quote.id);
-    setSavedQuote(quote);
-    setActiveQuoteId(quote.id);
-
-    setForm({
-      date: quote.date || "",
-      bid_date: quote.bid_date || "N/A",
-      contact: normalizeContact(quote.contact),
-      project: quote.project || "",
-      to_company: quote.to_company || "",
-      attention: quote.attention || "",
-      location: quote.location || "",
-      status: quote.status || "Not Started",
-      notes: quote.notes || "",
+  async function fetchDashboard() {
+    await fetchQuotes({
+      search: dashSearch,
+      status: dashStatus,
+      sort_by: dashSort,
+      direction: dashDirection,
     });
-  };
+  }
 
-  const handleDeleteQuote = async (id) => {
-    await axios.delete(`${API}/quotes/${id}`);
-    fetchQuotes();
+  async function fetchCompanies(search = "") {
+    const res = await axios.get(`${API}/companies`, { params: { search } });
+    setCompanies(res.data);
+  }
 
-    if (savedQuote?.id === id) {
-      setSavedQuote(null);
-      setActiveQuoteId(null);
-    }
-  };
+  async function fetchContacts(search = "") {
+    const res = await axios.get(`${API}/contacts`, { params: { search } });
+    setContacts(res.data);
+  }
 
-const roundToPreferred = (value) => {
-  return Math.round(value);
-};
+  async function searchQuoteCompanies(term) {
+  setQuoteForm((prev) => ({
+    ...prev,
+    to_company: term,
+    attention: "",
+  }));
 
-  const handleSubmitLineItem = async (e) => {
-  e.preventDefault();
+  setSelectedCompanyId(null);
+  setContactResults([]);
+  setContactSearchMessage("");
 
-  if (!activeQuoteId) {
-    alert("Save or select a quote first before adding line items.");
+  if (!term || term.length < 2) {
+    setCompanyResults([]);
+    setCompanySearchMessage("");
     return;
   }
 
-  // ✅ Convert values
-  const list = Number(lineItemForm.list_price || 0);
-  const multiplier = Number(lineItemForm.multiplier || 1);
-  const markup = Number(lineItemForm.markup || 0);
-  const freight = Number(lineItemForm.freight || 0);
-  const startup = Number(lineItemForm.startup || 0);
-  const surcharge = Number(lineItemForm.surcharge || 0);
-  const qty = Number(lineItemForm.qty || 0);
+  const res = await axios.get(`${API}/companies`, {
+    params: { search: term },
+  });
 
-const net_cost = list * (1 + surcharge) * multiplier;
+  setCompanyResults(res.data);
 
-const raw_sell = (net_cost * (1 + markup)) + freight + startup;
-
-const sell_price = roundToPreferred(raw_sell);
-
-const total_price = sell_price * qty;
-
-  // ✅ attach calculated values
-  const payload = {
-    ...lineItemForm,
-    net_cost: Number(net_cost.toFixed(2)),
-    sell_price: Number(sell_price.toFixed(2)),
-    total_price: Number(total_price.toFixed(2)),
-  };
-
-  if (editingLineItemId) {
-    await axios.put(`${API}/line-items/${editingLineItemId}`, payload);
-    setEditingLineItemId(null);
+  if (res.data.length === 0) {
+    setCompanySearchMessage("No company found yet. You can still type manually.");
   } else {
-    await axios.post(`${API}/quotes/${activeQuoteId}/line-items`, payload);
+    setCompanySearchMessage("");
   }
+}
 
-  setLineItemForm(emptyLineItem);
-  fetchQuotes();
-};
-
-  const handleEditLineItem = (quoteId, item) => {
-    setActiveQuoteId(quoteId);
-    setEditingLineItemId(item.id);
-
-    setLineItemForm({
-      tag: item.tag || "",
-      vendor: item.vendor || "",
-      qty: item.qty ?? 1,
-      description: item.description || "",
-      list_price: item.list_price || 0,
-      multiplier: item.multiplier || 1,
-      markup: item.markup || 0,
-      freight: item.freight || 0,
-      startup: item.startup || 0,
-      surcharge: item.surcharge || 0,
-      terms: item.terms || "FFA",
-      notes: item.notes || "",
-      included: item.included ?? false,
-    });
-  };
-
-  const handleDeleteLineItem = async (id) => {
-    await axios.delete(`${API}/line-items/${id}`);
-    fetchQuotes();
-  };
-
-
-// const handleDropLineItem = async (quoteId, targetItemId) => {
-//   if (!draggedLineItem) return;
-//   if (draggedLineItem.quoteId !== quoteId) return;
-//   if (draggedLineItem.itemId === targetItemId) return;
-
-//   let newItemOrder = [];
-
-//   setQuotes((prevQuotes) =>
-//     prevQuotes.map((quote) => {
-//       if (quote.id !== quoteId) return quote;
-
-//       const items = [...(quote.line_items || [])];
-
-//       const fromIndex = items.findIndex(
-//         (item) => item.id === draggedLineItem.itemId
-//       );
-
-//       const toIndex = items.findIndex(
-//         (item) => item.id === targetItemId
-//       );
-
-//       if (fromIndex === -1 || toIndex === -1) return quote;
-
-//       const [movedItem] = items.splice(fromIndex, 1);
-
-//       items.splice(toIndex, 0, movedItem);
-
-//       newItemOrder = items.map((item) => item.id);
-
-//       return {
-//         ...quote,
-//         line_items: items,
-//       };
-//     })
-//   );
-
-//   setDraggedLineItem(null);
-
-//   if (newItemOrder.length > 0) {
-//     await axios.put(
-//       `${API}/quotes/${quoteId}/line-items/reorder`,
-//       {
-//         item_ids: newItemOrder,
-//       }
-//     );
-
-//     fetchQuotes();
-//   }
-// };
-
-const handleDropLineItem = async (quoteId, targetItemId) => {
-  if (!draggedLineItem) return;
-  if (draggedLineItem.quoteId !== quoteId) return;
-  if (draggedLineItem.itemId === targetItemId) return;
-
-  const quote = quotes.find((q) => q.id === quoteId);
-  if (!quote) return;
-
-  const items = [...(quote.line_items || [])];
-
-  const fromIndex = items.findIndex((item) => item.id === draggedLineItem.itemId);
-  const toIndex = items.findIndex((item) => item.id === targetItemId);
-
-  if (fromIndex === -1 || toIndex === -1) return;
-
-  const [movedItem] = items.splice(fromIndex, 1);
-  items.splice(toIndex, 0, movedItem);
-
-  const updatedItems = items.map((item, index) => ({
-    ...item,
-    sort_order: index + 1,
+function selectQuoteCompany(company) {
+  setQuoteForm((prev) => ({
+    ...prev,
+    to_company: company.name,
+    attention: "",
   }));
 
-  setQuotes((prevQuotes) =>
-    prevQuotes.map((q) =>
-      q.id === quoteId
-        ? { ...q, line_items: updatedItems }
-        : q
-    )
-  );
+  setSelectedCompanyId(company.id);
+  setCompanyResults([]);
+  setCompanySearchMessage("");
+}
 
-  setDraggedLineItem(null);
+async function searchQuoteContacts(term) {
+  setQuoteForm((prev) => ({
+    ...prev,
+    attention: term,
+  }));
 
-  await axios.put(`${API}/quotes/${quoteId}/line-items/reorder`, {
-    item_ids: updatedItems.map((item) => item.id),
+  if (!selectedCompanyId) {
+    setContactResults([]);
+    setContactSearchMessage("Select a company first to search contacts.");
+    return;
+  }
+
+  if (!term || term.length < 1) {
+    setContactResults([]);
+    setContactSearchMessage("");
+    return;
+  }
+
+  const res = await axios.get(`${API}/contacts`, {
+    params: {
+      company_id: selectedCompanyId,
+      search: term,
+    },
   });
 
-  fetchQuotes();
-};
+  setContactResults(res.data);
 
-  const printQuotePdf = async (quote, mode = "preview") => {
-    const doc = new jsPDF("p", "pt", "letter");
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    const marginLeft = 36;
-    const marginRight = 36;
-    const contentWidth = pageWidth - marginLeft - marginRight;
-    const totalPages = 3;
-
-    // const pageHeader = () => {
-    //   doc.addImage(hteLogo, "JPEG", marginLeft, 25, 120, 45);
-    //   doc.addImage(hteAddress, "PNG", pageWidth - marginRight - 190, 25, 190, 45);
-    // };
-    const pageHeader = () => {
-  doc.addImage(hteLogo, "JPEG", marginLeft, 20, 150, 55); // bigger logo
-  // doc.addImage(hteAddress, "PNG", pageWidth - marginRight - 230, 20, 230, 55); // bigger address
-  doc.addImage(hteAddress, "PNG", pageWidth - marginRight - 230, 38, 230, 55); // lower
-};
-
-    const pageFooter = (pageNum) => {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - marginRight, pageHeight - 20, {
-        align: "right",
-      });
-    };
-
-    const pdfQuoteTotal = quoteTotal(quote);
-
-    const uniqueTerms = [
-      ...new Set((quote.line_items || []).map((item) => item.terms).filter(Boolean)),
-    ];
-
-    const termsText =
-      uniqueTerms.length === 1 ? `${uniqueTerms[0]} ORIGIN` : "TERMS VARY BY LINE ITEM";
-
-    // PAGE 1
-pageHeader();
-
-const titleY = 110;
-const topLineY = titleY - 18;
-const bottomLineY = titleY + 8;
-
-// doc.setDrawColor(47, 111, 99);
-// doc.setLineWidth(1);
-doc.setDrawColor(20, 80, 60); // darker green
-doc.setLineWidth(2);          // thicker line
-// doc.setDrawColor(15, 70, 50);
-// doc.setLineWidth(2.5);
-
-const tableLeft = marginLeft;
-const tableRight = pageWidth - marginRight;
-
-doc.line(tableLeft, topLineY, tableRight, topLineY);
-
-doc.setFont("helvetica", "bold");
-doc.setFontSize(16);
-doc.text("QUOTATION", pageWidth / 2, titleY, { align: "center" });
-
-doc.line(tableLeft, bottomLineY, tableRight, bottomLineY);
-
-let y = bottomLineY + 25;
-
-autoTable(doc, {
-  startY: y,
-  margin: { left: marginLeft + 5, right: marginRight + 5 },
-  theme: "grid",
-  body: [
-    ["DATE:", quote.date || "", "BID DATE:", quote.bid_date || ""],
-    ["QUOTE #:", quote.quote_number || "", "TO:", quote.to_company || ""],
-    ["CONTACT:", formatContact(quote.contact), "ATTENTION:", quote.attention || ""],
-    ["PROJECT:", quote.project || "", "LOCATION:", quote.location || ""],
-  ],
-  styles: {
-    font: "helvetica",
-    fontSize: 9,
-    cellPadding: 4,
-    lineColor: [0, 0, 0],
-    lineWidth: 0.6,
-    textColor: [0, 0, 0],
-    valign: "middle",
-  },
-columnStyles: {
-  0: { cellWidth: 80, fontStyle: "bold", fillColor: [235, 235, 235] },
-  1: { cellWidth: 180, },
-  2: { cellWidth: 90, fontStyle: "bold", fillColor: [235, 235, 235] },
-  3: { cellWidth: 180 },
-},
-});
-
-y = doc.lastAutoTable.finalY + 20;
-
-    doc.setFont("helvetica", "normal");
-doc.setFontSize(7.2);
-
-const paragraphGap = 7;
-const lineHeight = 8.3;
-
-const addParagraph = (text, options = {}) => {
-  doc.setFont(
-    "helvetica",
-    options.style || "normal"
-  );
-
-  if (options.color) {
-    doc.setTextColor(...options.color);
+  if (res.data.length === 0) {
+    setContactSearchMessage("No contact found for this company. You can still type manually.");
   } else {
-    doc.setTextColor(0, 0, 0);
+    setContactSearchMessage("");
   }
-
-  const lines = doc.splitTextToSize(text, contentWidth);
-  doc.text(lines, marginLeft, y);
-  y += lines.length * lineHeight + paragraphGap;
-
-  doc.setTextColor(0, 0, 0);
-};
-
-// normal intro
-addParagraph(
-  "We are pleased to propose the following equipment for your consideration and subject to the engineer’s approval. Our proposal is limited only to that portion of the specifications concerning the equipment we have proposed per the sections and related paragraphs cited in our proposal. On all Heat Transfer Equipment Company’s quotations, where project plans and/or specifications have not been provided, we reserve the right to re-quote once the missing plans are provided to us."
-);
-
-// BOLD pricing paragraph
-addParagraph(
-  "Pricing is based upon the purchase of ALL equipment, per each manufacturer, on this quotation. If all equipment will not be ordered in full, price is subject to change. It is to not be assumed that any equipment or components, not explicitly written into this quote, even if they are within our scope, are included in the pricing of this quotation. Please discuss with your sales associate if any item is in question.",
-  { style: "bold" }
-);
-
-// BOLD terms paragraph
-addParagraph(
-  "This quotation is in accordance with the Terms & Conditions listed at the end of this document – H.T.E. does not agree to accept other Terms & Conditions unless noted within this quotation.",
-  { style: "bold" }
-);
-
-   // RED BOLD ITALIC tariff
-addParagraph("Tariff Disclaimer:", {
-  style: "bolditalic",
-  color: [200, 0, 0],
-});
-
-addParagraph(
-  "At Heat Transfer Equipment, we strive to provide accurate and competitive pricing based on the tariff rates, duties, government-imposed charges, and trade regulations in effect at the time this quote is issued. However, we recognize that global trade conditions and regulatory decisions can change unexpectedly and are outside of any of our control.",
-  { style: "bolditalic", color: [200, 0, 0] }
-);
-
-addParagraph(
-  "If new tariffs, duties, taxes, or similar charges are introduced, or if existing ones are modified by any government or regulatory authority (“Tariff Changes”), and these changes result in an increase to the cost of goods, we reserve the right to adjust the pricing of the affected items to reflect those changes.",
-  { style: "bolditalic", color: [200, 0, 0] }
-);
-
-addParagraph(
-  "Any tariff-related cost increases that take effect after the quote date will be communicated to you in advance of issuing the final invoice. We will always do our best to provide transparency and timely updates to help you make informed purchasing decisions.",
-  { style: "bolditalic", color: [200, 0, 0] }
-);
-
-addParagraph(
-  "If you have any questions or would like to better understand how potential tariff changes may impact your order, please don’t hesitate to contact your Heat Transfer Equipment sales representative. We truly appreciate your business and your understanding as we navigate these evolving conditions together.",
-  { style: "bolditalic", color: [200, 0, 0] }
-);
-
-// green line after tariff
-y += 3;
-doc.setDrawColor(20, 80, 60);
-doc.setLineWidth(2);
-doc.line(marginLeft - 10, y, pageWidth - marginRight + 10, y);
-y += 10;
-
-doc.setTextColor(0, 0, 0);
-
-doc.setFont("helvetica", "bold");
-doc.setFontSize(9);
-doc.text(
-  "NO SPECIFICATIONS PROVIDED",
-  pageWidth / 2,
-  y,
-  { align: "center" }
-);
-
-y += 12;
-
-autoTable(doc, {
-  startY: y,
-  margin: { left: marginLeft - 10, right: marginRight -10 },
-  // theme: "grid",
-  theme: "plain",
-  head: [["TAG:", "QTY:", "DESCRIPTION:", "NET EACH", "EXT. TOTAL"]],
-body: [...(quote.line_items || [])]
-  .map((item) => [
-  item.tag || "",
-  Number(item.qty) > 0 ? item.qty : "",
-  (item.description || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/(^|\n)-\s+/g, "$1• ")
-    .trim(),
-  // formatMoney(item.sell_price),
-  // formatMoney(item.total_price),
-item.included ? "Included" : formatMoney(item.sell_price),
-item.included ? "Included" : formatMoney(item.total_price),
-]),
-    
-
-  styles: {
-    font: "helvetica",
-    fontSize: 8,
-    cellPadding: { top: 8, bottom: 8, left: 4, right: 4 },
-    textColor: [0, 0, 0],
-    lineColor: [0, 0, 0],
-    halign: "left",
-    // lineWidth: 0.4,
-  },
-  headStyles: {
-    fillColor: [230, 230, 230],
-    textColor: [0, 0, 0],
-    fontStyle: "bold",
-    halign: "center",
-  },
-  columnStyles: {
-    // 0: { cellWidth: 80 },
-    0: { cellWidth: 85, cellPadding: { left: 10, right: 4, top: 8, bottom: 8 }, fontStyle: "bold" },
-    1: { cellWidth: 40, halign: "center", fontStyle: "bold" },
-    2: { cellWidth: 295, halign: "left" },
-    3: { cellWidth: 70, halign: "center" },
-    4: { cellWidth: 70, halign: "center", fontStyle: "bold" },
-  },
-  bodyStyles: {
-    valign: "top",
-  },
-
-//   didParseCell: function (data) {
-
-    
-//   // DESCRIPTION column only
-//   if (data.section === "body" && data.column.index === 2) {
-//     const text = Array.isArray(data.cell.text)
-//       ? data.cell.text.join(" ")
-//       : String(data.cell.text || "");
-
-//     // if contains bullet
-//     if (text.includes("•")) {
-//       data.cell.styles.fontStyle = "italic";
-//     }
-//   }
-// },
-
-// didParseCell: function (data) {
-//   if (data.section === "body" && data.column.index === 2) {
-//     const raw = String(data.row.raw[2] || "");
-
-//     if (raw.includes("||")) {
-//       // hide original text so custom text does not print twice
-//       data.cell.styles.textColor = [255, 255, 255];
-//     } else if (raw.includes("•")) {
-//       // fallback: italicize full cell if no custom bold separator
-//       data.cell.styles.fontStyle = "italic";
-//     }
-//   }
-// },
-
-didParseCell: function (data) {
-
-  // reset every cell to normal first
-  // data.cell.styles.fontStyle = "normal";
-
-  // TAG column - hide only marked lines from autoTable
-  if (data.section === "body" && data.column.index === 0) {
-    const raw = String(data.cell.raw || "");
-
-    data.cell.text = raw
-      .split("\n")
-      .map((line) => {
-        // if (line.trim().startsWith("!")) return " ";
-        // return line.trim();
-        return line.replace("!", "").trim();
-      });
-  }
-
-  // DESCRIPTION column
-// DESCRIPTION column
-if (data.section === "body" && data.column.index === 2) {
-  const raw = String(data.cell.raw || "");
-
-  if (raw.includes("||")) {
-    data.cell.text = data.cell.text.map((line) =>
-      String(line).replace(/\|\|/g, "")
-    );
-  }
-
-  data.cell.text = data.cell.text.map((line) => {
-  if (String(line).trim().startsWith("•")) {
-    return "   " + line;
-  }
-  return line;
-});
-
-}
-},
-
-// didDrawCell: function (data) {
-
-
-//   // TAG column - yellow + bold only line with *
-
-//   if (
-//   data.section === "body" &&
-//   data.column.index === 0 &&
-//   data.cell.raw !== undefined &&
-//   data.cell.raw !== null
-// ) {
-//     const raw = String(data.row.raw[0] || "");
-//     const lines = raw.split("\n");
-
-//     const x = data.cell.x + 10;
-//     let y = data.cell.y + 11;
-//     const lineHeight = 8.5;
-
-//     lines.forEach((line) => {
-//       const isMarked = line.trim().startsWith("!");
-//       const cleanLine = line.replace(/^\!/, "").trim();
-
-//       if (isMarked && cleanLine) {
-//         doc.setFont("helvetica", "bold");
-//         doc.setFontSize(8);
-
-//         const textWidth = doc.getTextWidth(cleanLine);
-
-//         doc.setFillColor(255, 255, 0);
-//         doc.rect(x - 1, y - 6, textWidth + 3, 8, "F");
-
-//         doc.setTextColor(0, 0, 0);
-//         doc.text(cleanLine, x, y);
-//       }
-
-//       y += lineHeight;
-//     });
-//   }
-
-  
-  
-
-// //   if (data.section !== "body") return;
-// //   if (data.column.index !== 2) return;
-
-// //   // ✅ Do not custom-draw repeated/continued rows on new page
-// // if (data.cell.raw === undefined || data.cell.raw === null) return;
-
-// //   const raw = String(data.row.raw[2] || "");
-// //   if (!raw.includes("||")) return;
-
-// //   const [boldPart, ...restParts] = raw.split("||");
-// //   const boldText = boldPart.trim();
-// //   const normalText = restParts.join("||").trim();
-
-// //   const x = data.cell.x + 3;
-// //   let y = data.cell.y + 8;
-// //   const maxWidth = data.cell.width - 6;
-// //   const lineHeight = 8.5;
-
-// //   doc.setTextColor(0, 0, 0);
-
-// //   doc.setFont("helvetica", "bold");
-// //   doc.text(boldText, x, y);
-
-// //   const boldWidth = doc.getTextWidth(boldText + " ");
-
-// //   doc.setFont("helvetica", "normal");
-
-// //   const normalLines = doc.splitTextToSize(normalText, maxWidth - boldWidth);
-
-// //   if (normalLines.length > 0) {
-// //     doc.text(normalLines[0], x + boldWidth, y);
-// //   }
-
-// //   y += lineHeight;
-
-//   // const remainingText = normalLines.slice(1).join(" ");
-//   // const remainingLines = doc.splitTextToSize(remainingText, maxWidth);
-
-//   // remainingLines.forEach((line) => {
-//   //   const trimmed = line.trim();
-
-//   //   if (trimmed.startsWith("•")) {
-//   //     doc.setFont("helvetica", "italic");
-//   //   } else {
-//   //     doc.setFont("helvetica", "normal");
-//   //   }
-
-//   //   doc.text(line, x, y);
-//   //   y += lineHeight;
-//   // });
-// // },
-
-  
-
-});
-
-    y = doc.lastAutoTable.finalY + 18;
-
-    y = doc.lastAutoTable.finalY + 6;
-
-doc.setDrawColor(0, 0, 0);
-doc.setLineWidth(0.7);
-doc.line(marginLeft - 10, y, pageWidth - marginRight + 10, y);
-
-y += 16;
-
-doc.setFont("helvetica", "bold");
-doc.setFontSize(8);
-
-const priceNote1 = "PRICING DOES NOT INCLUDE SALES TAX";
-const priceNote2 = `ALL EQUIPMENT HAS BEEN PRICED: ${termsText}`;
-
-const drawHighlightedText = (text, yPos) => {
-  const textWidth = doc.getTextWidth(text);
-  const padding = 3;
-
-  const x = pageWidth - marginRight - textWidth;
-
-  // tight yellow highlight
-  doc.setFillColor(255, 255, 0);
-  doc.rect(
-    x - padding,
-    yPos - 6,
-    textWidth + padding * 2,
-    10,
-    "F"
-  );
-
-  doc.setTextColor(0, 0, 0);
-  doc.text(text, pageWidth - marginRight, yPos, { align: "right" });
-};
-
-// draw lines
-drawHighlightedText(priceNote1, y);
-
-y += 12;
-
-drawHighlightedText(priceNote2, y);
-
-y += 18;
-
-doc.setFont("helvetica", "bold");
-doc.setFontSize(12); // bigger
-
-doc.text(`TOTAL: ${formatMoney(pdfQuoteTotal)}`, pageWidth - marginRight, y, {
-  align: "right",
-});
-
-    // pageFooter(1);
-
-   
-    // pageFooter(2);
-
-
-const quotePdfBytes = doc.output("arraybuffer");
-
-const quotePdf = await PDFDocument.load(quotePdfBytes);
-
-const lastPagesBytes = await fetch(lastTwoPagesPdf).then((res) =>
-  res.arrayBuffer()
-);
-
-const lastPagesPdf = await PDFDocument.load(lastPagesBytes);
-
-const copiedPages = await quotePdf.copyPages(
-  lastPagesPdf,
-  lastPagesPdf.getPageIndices()
-);
-
-copiedPages.forEach((page) => {
-  quotePdf.addPage(page);
-});
-
-const finalPdfBytes = await quotePdf.save();
-
-const blob = new Blob([finalPdfBytes], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
-
-if (mode === "download") {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${quote.quote_number || "quote"}.pdf`;
-  a.click();
-} else {
-  window.open(url, "_blank");
 }
 
+function selectQuoteContact(contact) {
+  const fullName = `${contact.first_name || ""} ${contact.last_name || ""}`.trim();
+
+  setQuoteForm((prev) => ({
+    ...prev,
+    attention: fullName,
+  }));
+
+  setContactResults([]);
+  setContactSearchMessage("");
+}
+
+  async function fetchProducts(search = "") {
+    const res = await axios.get(`${API}/products`, { params: { search } });
+    setProducts(res.data);
   }
 
-const previewQuotePdf = async (quote) => {
-  await printQuotePdf(quote, "preview");
-};
+  async function searchLineProducts(term) {
+  setLineItemForm((prev) => ({
+    ...prev,
+    item: term,
+  }));
 
-const downloadQuotePdf = async (quote) => {
-  await printQuotePdf(quote, "download");
-};
+  if (!term || term.length < 2) {
+    setLineProductResults([]);
+    setLineProductSearchMessage("");
+    return;
+  }
 
-  const selectedQuote = quotes.find((q) => q.id === activeQuoteId);
-
-  const calculatedPreview = (() => {
-  const list = Number(lineItemForm.list_price || 0);
-  const multiplier = Number(lineItemForm.multiplier || 1);
-  const markup = Number(lineItemForm.markup || 0);
-  const freight = Number(lineItemForm.freight || 0);
-  const startup = Number(lineItemForm.startup || 0);
-  const surcharge = Number(lineItemForm.surcharge || 0);
-  const qty = Number(lineItemForm.qty || 1);
-
-const net = list * (1 + surcharge) * multiplier;
-
-const rawSell = (net * (1 + markup)) + freight + startup;
-
-const sell = roundToPreferred(rawSell);
-
-const total = sell * qty;
-
-  return { net, sell, total };
-})();
-
-const downloadQuoteWord = async (quote) => {
-  const rows = [
-    ["TAG", "QTY", "DESCRIPTION", "NET EACH", "EXT. TOTAL"],
-    ...(quote.line_items || []).map((item) => [
-      item.tag || "",
-      String(item.qty || 1),
-      item.description || "",
-      formatMoney(item.sell_price),
-      formatMoney(item.total_price),
-    ]),
-  ];
-
-  const doc = new Document({
-    sections: [
-      {
-        children: [
-          new Paragraph({
-            children: [new TextRun({ text: "QUOTATION", bold: true, size: 32 })],
-            spacing: { after: 300 },
-          }),
-
-          new Paragraph(`Date: ${quote.date || ""}`),
-          new Paragraph(`Quote #: ${quote.quote_number || ""}`),
-          new Paragraph(`To: ${quote.to_company || ""}`),
-          new Paragraph(`Attention: ${quote.attention || ""}`),
-          new Paragraph(`Project: ${quote.project || ""}`),
-          new Paragraph(`Location: ${quote.location || ""}`),
-          new Paragraph(""),
-
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: rows.map(
-              (row) =>
-                new TableRow({
-                  children: row.map(
-                    (cell) =>
-                      new TableCell({
-                        children: [new Paragraph(String(cell || ""))],
-                      })
-                  ),
-                })
-            ),
-          }),
-
-          new Paragraph(""),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `TOTAL: ${formatMoney(quoteTotal(quote))}`,
-                bold: true,
-              }),
-            ],
-          }),
-        ],
-      },
-    ],
+  const res = await axios.get(`${API}/products`, {
+    params: { search: term },
   });
 
-  const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
+  setLineProductResults(res.data);
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${quote.quote_number || "quote"}.docx`;
-  a.click();
+  if (res.data.length === 0) {
+    setLineProductSearchMessage("No product found yet. You can still type manually.");
+  } else {
+    setLineProductSearchMessage("");
+  }
+}
 
-  URL.revokeObjectURL(url);
-};
+function selectLineProduct(p) {
+  setLineItemForm((prev) => ({
+    ...prev,
+    item: p.category || "",
+    type: p.type || "",
+    series: p.series || "",
+    model: p.model || "",
+    part_number: p.part_number || "",
+    vendor: p.vendor || "",
+    description: p.description || "",
+    list_price: p.list_price || 0,
+    multiplier: p.multiplier || 1,
+    surcharge: p.surcharge || 0,
+  }));
 
+  setLineProductResults([]);
+  setLineProductSearchMessage("");
+}
 
+  async function fetchNotes(search = "") {
+    const res = await axios.get(`${API}/notes-library`, { params: { search } });
+    setNotes(res.data);
+  }
 
-  return (
-    <div className="container">
-      <h2>Quote Builder</h2>
+  function updateForm(setter) {
+    return (e) => {
+      const { name, value, type, checked } = e.target;
+      setter((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+    };
+  }
 
-      <form className="form" onSubmit={handleSubmitQuote}>
-        <label>Contact:</label>
-        <select name="contact" multiple value={form.contact} onChange={handleContactChange}>
-          {outsideSalesNames.map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
+  function handleQuoteContactInput(e) {
+    const value = e.target.value;
+    const arr = value.split(",").map((x) => x.trim()).filter(Boolean);
+    setQuoteForm((prev) => ({ ...prev, contact: arr }));
+  }
 
-        <input name="project" placeholder="Project" value={form.project} onChange={handleChange} />
-        <input name="to_company" placeholder="To" value={form.to_company} onChange={handleChange} />
-        <input name="attention" placeholder="Attention" value={form.attention} onChange={handleChange} />
-        <input name="location" placeholder="Location" value={form.location} onChange={handleChange} />
-        <input
-  name="date"
-  placeholder="Quote Date"
-  value={form.date}
-  onChange={handleChange}
-/>
-        <input name="bid_date" placeholder="Bid Date" value={form.bid_date} onChange={handleChange} />
-
-        <select name="status" value={form.status} onChange={handleChange}>
-          <option value="Not Started">Not Started</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Bid Submitted">Bid Submitted</option>
-          <option value="Not Bidding">Not Bidding</option>
-          <option value="Won">Won</option>
-          <option value="Lost">Lost</option>
-        </select>
-
-        <textarea
-  name="notes"
-  placeholder="Quote Notes"
-  value={form.notes}
-  onChange={handleChange}
-  rows={3}
-  style={{ resize: "vertical" }}
-/>
-
-        <button className="btn primary">{editingId ? "Update Quote" : "Save Quote"}</button>
-      </form>
-
-      <h3>Current Quote Preview</h3>
-
-      <table className="quote-table">
-        <tbody>
-          <tr>
-            <td className="label">DATE:</td>
-            <td className="value">{savedQuote?.date || today}</td>
-            <td className="label">BID DATE:</td>
-            <td className="value">{form.bid_date}</td>
-          </tr>
-          <tr>
-            <td className="label">QUOTE #:</td>
-            <td className="value">{savedQuote?.quote_number || "Generated after save"}</td>
-            <td className="label">TO:</td>
-            <td className="value">{form.to_company}</td>
-          </tr>
-          <tr>
-            <td className="label">CONTACT:</td>
-            <td className="value">{formatContact(form.contact)}</td>
-            <td className="label">ATTENTION:</td>
-            <td className="value">{form.attention}</td>
-          </tr>
-          <tr>
-            <td className="label">PROJECT:</td>
-            <td className="value">{form.project}</td>
-            <td className="label">LOCATION:</td>
-            <td className="value">{form.location}</td>
-          </tr>
-          <tr>
-            <td className="label">STATUS:</td>
-            <td className="value">{form.status}</td>
-            <td className="label"></td>
-            <td className="value"></td>
-          </tr>
-        </tbody>
-      </table>
-
-      <hr />
-
-      <h3>
-        Line Items {selectedQuote ? `for ${selectedQuote.quote_number}` : "(save/select quote first)"}
-      </h3>
-
-<form className="line-item-form" onSubmit={handleSubmitLineItem}>
-
-<label>Tag</label>
-
-<textarea
-  name="tag"
-  placeholder={`Line 1
-Line 2
-Line 3`}
-  value={lineItemForm.tag}
-  onChange={handleLineItemChange}
-  rows={4}
-  className="tag-textarea"
-/>
-
-  <label>Vendor</label>
-  <input name="vendor" placeholder="Vendor" value={lineItemForm.vendor} onChange={handleLineItemChange} />
-
-  <label>Qty</label>
-  <input name="qty" type="number" placeholder="Qty" value={lineItemForm.qty} onChange={handleLineItemChange} />
-
-<textarea
-  name="description"
-  placeholder="Description"
-  value={lineItemForm.description}
-  onChange={handleLineItemChange}
-  rows={3}
-  style={{ resize: "vertical" }}
-/>
-
-  <label>List Price ($)</label>
-  <input name="list_price" type="number" step="0.01" placeholder="List Price" value={lineItemForm.list_price} onChange={handleLineItemChange} />
-
-  <label>Multiplier</label>
-  <input name="multiplier" type="number" step="0.0001" placeholder="Multiplier" value={lineItemForm.multiplier} onChange={handleLineItemChange} />
-
-  <label>Markup (decimal example .20)</label>
-  <input name="markup" type="number" step="0.0001" placeholder="Markup" value={lineItemForm.markup} onChange={handleLineItemChange} />
-
-  <label>Freight ($)</label>
-  <input name="freight" type="number" step="0.01" placeholder="Freight" value={lineItemForm.freight} onChange={handleLineItemChange} />
-
-  <label>Startup ($)</label>
-  <input name="startup" type="number" step="0.01" placeholder="Startup" value={lineItemForm.startup} onChange={handleLineItemChange} />
-
-  <label>Surcharge (decimal example .10 for 10%)</label>
-  <input name="surcharge" type="number" step="0.01" placeholder="Surcharge" value={lineItemForm.surcharge} onChange={handleLineItemChange} />
-
-  <label>Terms</label>
-  <select name="terms" value={lineItemForm.terms} onChange={handleLineItemChange}>
-    <option value="FFA">FFA</option>
-    <option value="FOB">FOB</option>
-  </select>
-<label>
-  <input
-    type="checkbox"
-    name="included"
-    checked={lineItemForm.included ?? false}
-    onChange={(e) =>
-      setLineItemForm({
-        ...lineItemForm,
-        included: e.target.checked,
-      })
+  async function saveQuote(e) {
+    e.preventDefault();
+    if (editingQuoteId) {
+      const res = await axios.put(`${API}/quotes/${editingQuoteId}`, quoteForm);
+      setActiveQuoteId(res.data.id);
+      setEditingQuoteId(null);
+    } else {
+      const res = await axios.post(`${API}/quotes`, quoteForm);
+      setActiveQuoteId(res.data.id);
     }
-  />
-  Included
-</label>
+    setQuoteForm(emptyQuote);
+    await fetchQuotes();
+  }
 
-  <label>Notes</label>
-  <input name="notes" placeholder="Notes" value={lineItemForm.notes} onChange={handleLineItemChange} />
+  function editQuote(q) {
+    setEditingQuoteId(q.id);
+    setActiveQuoteId(q.id);
+    setQuoteForm({
+      bid_date: q.bid_date || "N/A",
+      contact: Array.isArray(q.contact) ? q.contact : [],
+      project: q.project || "",
+      to_company: q.to_company || "",
+      attention: q.attention || "",
+      location: q.location || "",
+      status: q.status || "Not Started",
+      notes: q.notes || "",
+    });
+    setTab("builder");
+  }
 
-  <div style={{ marginTop: "10px", fontWeight: "bold" }}>
-    Net: {formatMoney(calculatedPreview.net)} | 
-    Sell: {formatMoney(calculatedPreview.sell)} | 
-    Total: {formatMoney(calculatedPreview.total)}
-  </div>
+  async function deleteQuote(id) {
+    if (!confirm("Delete this quote?")) return;
+    await axios.delete(`${API}/quotes/${id}`);
+    if (activeQuoteId === id) setActiveQuoteId(null);
+    await fetchQuotes();
+  }
 
-  <button className="btn primary">
-    {editingLineItemId ? "Update Line Item" : "Add Line Item"}
-  </button>
+  async function autofillFromProduct(searchTerm) {
+    if (!searchTerm || searchTerm.length < 2) return;
+    const res = await axios.get(`${API}/products/lookup`, { params: { term: searchTerm } });
+    const p = res.data?.[0];
+    if (!p) return;
 
-</form>
+    setLineItemForm((prev) => ({
+      ...prev,
+      item: p.category || prev.item,
+      type: p.type || prev.type,
+      series: p.series || prev.series,
+      model: p.model || prev.model,
+      part_number: p.part_number || prev.part_number,
+      vendor: p.vendor || prev.vendor,
+      description: p.description || prev.description,
+      list_price: p.list_price || 0,
+      multiplier: p.multiplier || 1,
+      surcharge: p.surcharge || 0,
+    }));
+  }
 
-      <hr />
+  async function saveLineItem(e) {
+    e.preventDefault();
+    if (!activeQuoteId) {
+      alert("Save or select a quote first.");
+      return;
+    }
 
-      <h3>Saved Quotes</h3>
+    const payload = { ...lineItemForm };
 
-      {quotes.map((q) => (
-        <div key={q.id} className="quote-card">
-          <table className="quote-table">
-            <tbody>
-              <tr>
-                <td className="label">DATE:</td>
-                <td className="value">{q.date}</td>
-                <td className="label">BID DATE:</td>
-                <td className="value">{q.bid_date}</td>
-              </tr>
-              <tr>
-                <td className="label">QUOTE #:</td>
-                <td className="value">{q.quote_number}</td>
-                <td className="label">TO:</td>
-                <td className="value">{q.to_company}</td>
-              </tr>
-              <tr>
-                <td className="label">CONTACT:</td>
-                <td className="value">{formatContact(q.contact)}</td>
-                <td className="label">ATTENTION:</td>
-                <td className="value">{q.attention}</td>
-              </tr>
-              <tr>
-                <td className="label">PROJECT:</td>
-                <td className="value">{q.project}</td>
-                <td className="label">LOCATION:</td>
-                <td className="value">{q.location}</td>
-              </tr>
-              <tr>
-                <td className="label">STATUS:</td>
-                <td className="value">{q.status}</td>
-                <td className="label"></td>
-                <td className="value"></td>
-              </tr>
-            </tbody>
-          </table>
+    if (editingLineItemId) {
+      await axios.put(`${API}/line-items/${editingLineItemId}`, payload);
+      setEditingLineItemId(null);
+    } else {
+      await axios.post(`${API}/quotes/${activeQuoteId}/line-items`, payload);
+    }
 
-          <div className="actions">
-            <button className="btn secondary" onClick={() => setActiveQuoteId(q.id)}>Select</button>
-            <button className="btn edit" onClick={() => handleEditQuote(q)}>Edit Quote</button>
-            <button className="btn secondary" onClick={() => previewQuotePdf(q)}>Preview PDF</button>
-            <button className="btn secondary" onClick={() => downloadQuotePdf(q)}>Download PDF</button>
-            <button className="btn secondary" onClick={() => downloadQuoteWord(q)}>Download Word</button>
-            <button className="btn delete" onClick={() => handleDeleteQuote(q.id)}>Delete Quote</button>
-          </div>
+    setLineItemForm(emptyLineItem);
+    await fetchQuotes();
+  }
 
-          <table className="line-items-table">
+  function editLineItem(item) {
+    setEditingLineItemId(item.id);
+    setLineItemForm({ ...emptyLineItem, ...item });
+  }
+
+  async function deleteLineItem(id) {
+    if (!confirm("Delete this line item?")) return;
+    await axios.delete(`${API}/line-items/${id}`);
+    await fetchQuotes();
+  }
+
+  async function dropLineItem(targetItemId) {
+    if (!draggedLineItem || !activeQuote) return;
+    if (draggedLineItem === targetItemId) return;
+
+    const items = [...(activeQuote.line_items || [])];
+    const from = items.findIndex((x) => x.id === draggedLineItem);
+    const to = items.findIndex((x) => x.id === targetItemId);
+    if (from < 0 || to < 0) return;
+
+    const [moved] = items.splice(from, 1);
+    items.splice(to, 0, moved);
+
+    await axios.put(`${API}/quotes/${activeQuote.id}/line-items/reorder`, {
+      item_ids: items.map((x) => x.id),
+    });
+    setDraggedLineItem(null);
+    await fetchQuotes();
+  }
+
+  async function openNotesModal(item) {
+    setNoteLineItem(item);
+    const res = await axios.get(`${API}/notes-library`, {
+      params: {
+        item: item.item || "",
+        type: item.type || "",
+        series: item.series || "",
+        model: item.model || "",
+      },
+    });
+
+    const selected = item.notes_selected || [];
+    const drafts = res.data.map((n) => {
+      const existing = selected.find((x) => x.note_library_id === n.id);
+      return {
+        note_library_id: n.id,
+        category: n.category,
+        label: "",
+        text: existing?.text || n.text,
+        note_type: n.note_type,
+        is_custom: false,
+        is_selected: existing ? existing.is_selected : !!n.default_selected,
+        sort_order: existing?.sort_order || n.sort_order || 0,
+      };
+    });
+
+    selected.filter((x) => x.is_custom).forEach((x) => drafts.push({ ...x }));
+    setNoteDrafts(drafts);
+    setNoteModalOpen(true);
+  }
+
+  async function saveLineItemNotes() {
+    await axios.put(`${API}/line-items/${noteLineItem.id}/notes`, {
+      notes: noteDrafts
+        .filter((n) => n.is_selected || n.is_custom)
+        .map((n, index) => ({ ...n, sort_order: index + 1 })),
+    });
+    setNoteModalOpen(false);
+    setNoteLineItem(null);
+    setNoteDrafts([]);
+    await fetchQuotes();
+  }
+
+  function addCustomNote() {
+    setNoteDrafts((prev) => [
+      ...prev,
+      {
+        note_library_id: null,
+        category: "",
+        label: "",
+        text: "",
+        note_type: "additional",
+        is_custom: true,
+        is_selected: true,
+        sort_order: prev.length + 1,
+      },
+    ]);
+  }
+
+  async function saveCrud(e, endpoint, form, editingId, reset, refresh, setEditing) {
+    e.preventDefault();
+    if (editingId) await axios.put(`${API}/${endpoint}/${editingId}`, form);
+    else await axios.post(`${API}/${endpoint}`, form);
+    reset();
+    setEditing(null);
+    await refresh();
+  }
+
+  async function deleteCrud(endpoint, id, refresh) {
+    if (!confirm("Delete this record?")) return;
+    await axios.delete(`${API}/${endpoint}/${id}`);
+    await refresh();
+  }
+
+  function Dashboard() {
+    return (
+      <section className="screen">
+        <div className="toolbar">
+          <input placeholder="Search quote/customer/job/location..." value={dashSearch} onChange={(e) => setDashSearch(e.target.value)} />
+          <select value={dashStatus} onChange={(e) => setDashStatus(e.target.value)}>
+            <option value="">All Status</option>
+            <option>Not Started</option>
+            <option>In Progress</option>
+            <option>Bid Submitted</option>
+            <option>Not Bidding</option>
+            <option>Won</option>
+            <option>Lost</option>
+          </select>
+          <select value={dashSort} onChange={(e) => setDashSort(e.target.value)}>
+            <option value="id">Created On</option>
+            <option value="bid_date">Bid Due Date</option>
+            <option value="status">Status</option>
+            <option value="project">Job</option>
+            <option value="to_company">Customer</option>
+            <option value="attention">Attn</option>
+            <option value="location">Location</option>
+          </select>
+          <select value={dashDirection} onChange={(e) => setDashDirection(e.target.value)}>
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+          <button className="btn primary" onClick={fetchDashboard}>Apply</button>
+        </div>
+
+        <div className="table-wrap">
+          <table className="data-table">
             <thead>
               <tr>
-                <th></th>
-                <th>Tag</th>
-                <th>Vendor</th>
-                <th>Qty</th>
-                <th>Description</th>
-                <th>List</th>
-                <th>Multiplier</th>
-                <th>Markup</th>
-                <th>Freight</th>
-                <th>Startup</th>
-                <th>Surcharge</th>
-                <th>Net Cost</th>
-                <th>Sell Price</th>
-                <th>Terms</th>
+                <th>Quote #</th>
+                <th>Bid Due Date</th>
+                <th>Created On</th>
+                <th>Status</th>
+                <th>Job</th>
+                <th>Customer</th>
+                <th>Attn</th>
                 <th>Total</th>
-                <th>Notes</th>
+                <th>Location</th>
                 <th>Actions</th>
               </tr>
             </thead>
-
             <tbody>
-{[...(q.line_items || [])]
-  .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-  .map((item) => (
-                <tr key={item.id}>
-                  <td
-  draggable
-  onDragStart={() =>
-    setDraggedLineItem({
-      quoteId: q.id,
-      itemId: item.id,
-    })
-  }
-  onDragOver={(e) => e.preventDefault()}
-  onDrop={() => handleDropLineItem(q.id, item.id)}
-  style={{
-    cursor: "grab",
-    textAlign: "center",
-    fontSize: "18px",
-    userSelect: "none",
-  }}
-  title="Drag to reorder"
->
-  ☰
-</td>
-                  <td>{item.tag}</td>
-                  <td>{item.vendor}</td>
-                  <td>{item.qty}</td>
-                  <td>{item.description}</td>
-                  <td>{formatMoney(item.list_price)}</td>
-                  <td>{item.multiplier}</td>
-                  <td>{item.markup}</td>
-                  <td>{formatMoney(item.freight)}</td>
-                  <td>{formatMoney(item.startup)}</td>
-                 <td>{item.surcharge}</td>
-<td>{formatMoney(item.net_cost)}</td>
-<td>{formatMoney(item.sell_price)}</td>
-<td>{item.terms}</td>
-<td>{formatMoney(item.total_price)}</td>
-                  <td>{item.notes}</td>
+              {quotes.map((q) => (
+                <tr key={q.id}>
+                  <td>{q.quote_number}</td>
+                  <td>{q.bid_date}</td>
+                  <td>{q.created_at || q.date}</td>
+                  <td><span className="pill">{q.status}</span></td>
+                  <td>{q.project}</td>
+                  <td>{q.to_company}</td>
+                  <td>{q.attention}</td>
+                  <td>{money(q.total)}</td>
+                  <td>{q.location}</td>
                   <td>
-                    <button className="btn edit" onClick={() => handleEditLineItem(q.id, item)}>
-                      Edit
-                    </button>
-                    <button className="btn delete" onClick={() => handleDeleteLineItem(item.id)}>
-                      Delete
-                    </button>
+                    <button className="btn secondary" onClick={() => { setActiveQuoteId(q.id); setTab("builder"); }}>Open</button>
+                    <button className="btn edit" onClick={() => editQuote(q)}>Edit</button>
+                    <button className="btn delete" onClick={() => deleteQuote(q.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
-
-              {(!q.line_items || q.line_items.length === 0) && (
-                <tr>
-                  <td colSpan="17">No line items yet.</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
+      </section>
+    );
+  }
+
+  function Builder() {
+    return (
+      <section className="screen">
+        <div className="two-panel">
+          <form className="card form-grid" onSubmit={saveQuote}>
+            <h3>{editingQuoteId ? "Edit Quote" : "Quote Form"}</h3>
+            <input name="project" placeholder="Job / Project" value={quoteForm.project} onChange={updateForm(setQuoteForm)} />
+<div className="lookup-field">
+  <input
+    name="to_company"
+    placeholder="Search Customer / Company"
+    value={quoteForm.to_company}
+    onChange={(e) => searchQuoteCompanies(e.target.value)}
+  />
+
+  {companyResults.length > 0 && (
+    <div className="lookup-results">
+      {companyResults.slice(0, 8).map((company) => (
+        <button
+          type="button"
+          key={company.id}
+          className="lookup-option"
+          onClick={() => selectQuoteCompany(company)}
+        >
+          <strong>{company.name}</strong>
+          <span>{company.type || ""}</span>
+        </button>
       ))}
+    </div>
+  )}
+
+  {companySearchMessage && (
+    <div className="lookup-message">{companySearchMessage}</div>
+  )}
+</div>
+
+<div className="lookup-field">
+  <input
+    name="attention"
+    placeholder="Search Contact / Attention"
+    value={quoteForm.attention}
+    onChange={(e) => searchQuoteContacts(e.target.value)}
+  />
+
+  {contactResults.length > 0 && (
+    <div className="lookup-results">
+      {contactResults.slice(0, 8).map((contact) => (
+        <button
+          type="button"
+          key={contact.id}
+          className="lookup-option"
+          onClick={() => selectQuoteContact(contact)}
+        >
+          <strong>
+            {`${contact.first_name || ""} ${contact.last_name || ""}`.trim()}
+          </strong>
+          <span>{contact.email || ""}</span>
+        </button>
+      ))}
+    </div>
+  )}
+
+  {contactSearchMessage && (
+    <div className="lookup-message">{contactSearchMessage}</div>
+  )}
+</div>
+            <input name="location" placeholder="Location" value={quoteForm.location} onChange={updateForm(setQuoteForm)} />
+            <input placeholder="Contacts, comma separated" value={formatContact(quoteForm.contact)} onChange={handleQuoteContactInput} />
+            <input name="bid_date" placeholder="Bid Due Date" value={quoteForm.bid_date} onChange={updateForm(setQuoteForm)} />
+            <select name="status" value={quoteForm.status} onChange={updateForm(setQuoteForm)}>
+              <option>Not Started</option>
+              <option>In Progress</option>
+              <option>Bid Submitted</option>
+              <option>Not Bidding</option>
+              <option>Won</option>
+              <option>Lost</option>
+            </select>
+            <textarea name="notes" placeholder="Quote Notes" value={quoteForm.notes} onChange={updateForm(setQuoteForm)} />
+            <button className="btn primary">{editingQuoteId ? "Update Quote" : "Save Quote"}</button>
+          </form>
+
+          <div className="card">
+            <h3>Active Quote</h3>
+            {activeQuote ? (
+              <>
+                <p><b>{activeQuote.quote_number}</b></p>
+                <p>{activeQuote.to_company} — {activeQuote.project}</p>
+                <p>{formatContact(activeQuote.contact)}</p>
+                <p><b>Total:</b> {money(activeQuote.total)}</p>
+              </>
+            ) : <p>Select or save a quote first.</p>}
+          </div>
+        </div>
+
+        <form className="card line-grid" onSubmit={saveLineItem}>
+          <h3>Line Item {activeQuote ? `for ${activeQuote.quote_number}` : ""}</h3>
+
+          <textarea className="tag-textarea" name="tag" placeholder="Tag" value={lineItemForm.tag} onChange={updateForm(setLineItemForm)} />
+          <div className="lookup-field">
+  <input
+    name="item"
+    placeholder="Search item / model / part #"
+    value={lineItemForm.item}
+    onChange={(e) => searchLineProducts(e.target.value)}
+  />
+
+  {lineProductResults.length > 0 && (
+    <div className="lookup-results">
+      {lineProductResults.slice(0, 8).map((p) => (
+        <button
+          type="button"
+          key={p.id}
+          className="lookup-option"
+          onClick={() => selectLineProduct(p)}
+        >
+          <strong>
+            {p.model || p.part_number || p.name}
+          </strong>
+
+          <span>
+            {p.vendor || ""} {p.series || ""}
+          </span>
+
+          <small>
+            {p.description || ""}
+          </small>
+        </button>
+      ))}
+    </div>
+  )}
+
+  {lineProductSearchMessage && (
+    <div className="lookup-message">
+      {lineProductSearchMessage}
+    </div>
+  )}
+</div>
+          <input name="type" placeholder="Type" value={lineItemForm.type} onChange={updateForm(setLineItemForm)} />
+          <input name="series" placeholder="Series" value={lineItemForm.series} onChange={updateForm(setLineItemForm)} />
+          <input
+  name="model"
+  placeholder="Model"
+  value={lineItemForm.model}
+  onChange={updateForm(setLineItemForm)}
+/>
+          <input name="part_number" placeholder="Part #" value={lineItemForm.part_number} onChange={updateForm(setLineItemForm)} />
+          <input name="vendor" placeholder="Vendor" value={lineItemForm.vendor} onChange={updateForm(setLineItemForm)} />
+          <input name="qty" type="number" placeholder="Qty" value={lineItemForm.qty} onChange={updateForm(setLineItemForm)} />
+          <textarea className="description-box" name="description" placeholder="Description" value={lineItemForm.description} onChange={updateForm(setLineItemForm)} />
+          <input name="list_price" type="number" step="0.01" placeholder="List Price" value={lineItemForm.list_price} onChange={updateForm(setLineItemForm)} />
+          <input name="multiplier" type="number" step="0.0001" placeholder="Multiplier" value={lineItemForm.multiplier} onChange={updateForm(setLineItemForm)} />
+          <input name="markup" type="number" step="0.0001" placeholder="Markup .25" value={lineItemForm.markup} onChange={updateForm(setLineItemForm)} />
+          <input name="freight" type="number" step="0.01" placeholder="Freight" value={lineItemForm.freight} onChange={updateForm(setLineItemForm)} />
+          <input name="startup" type="number" step="0.01" placeholder="Startup" value={lineItemForm.startup} onChange={updateForm(setLineItemForm)} />
+          <input name="surcharge" type="number" step="0.0001" placeholder="Surcharge .10" value={lineItemForm.surcharge} onChange={updateForm(setLineItemForm)} />
+          <select name="terms" value={lineItemForm.terms} onChange={updateForm(setLineItemForm)}>
+            <option value="FFA">FFA</option>
+            <option value="FOB">FOB</option>
+          </select>
+          <label className="check"><input type="checkbox" name="included" checked={lineItemForm.included} onChange={updateForm(setLineItemForm)} /> Included</label>
+          <input name="notes" placeholder="Internal Notes" value={lineItemForm.notes} onChange={updateForm(setLineItemForm)} />
+
+          <div className="calc-box">Net: {money(calculatedPreview.net)} | Sell: {money(calculatedPreview.sell)} | Total: {money(calculatedPreview.total)}</div>
+          <button className="btn primary">{editingLineItemId ? "Update Line Item" : "Add Line Item"}</button>
+        </form>
+
+        {activeQuote && (
+          <div className="card table-wrap">
+            <h3>Line Items</h3>
+            <table className="line-items-table">
+              <thead>
+                <tr>
+                  <th></th><th>Tag</th><th>Item</th><th>Type</th><th>Series</th><th>Model</th><th>Part #</th><th>Vendor</th><th>Qty</th><th>Description</th><th>Sell</th><th>Total</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(activeQuote.line_items || []).map((item) => (
+                  <tr key={item.id}>
+                    <td draggable onDragStart={() => setDraggedLineItem(item.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => dropLineItem(item.id)} className="drag">☰</td>
+                    <td>{item.tag}</td>
+                    <td>{item.item}</td>
+                    <td>{item.type}</td>
+                    <td>{item.series}</td>
+                    <td>{item.model}</td>
+                    <td>{item.part_number}</td>
+                    <td>{item.vendor}</td>
+                    <td>{item.qty}</td>
+                    <td className="description-cell">{getLineDescription(item)}</td>
+                    <td>{item.included ? "Included" : money(item.sell_price)}</td>
+                    <td>{item.included ? "Included" : money(item.total_price)}</td>
+                    <td>
+                      <button className="btn edit" onClick={() => editLineItem(item)}>Edit</button>
+                      <button className="btn secondary" onClick={() => openNotesModal(item)}>Notes</button>
+                      <button className="btn delete" onClick={() => deleteLineItem(item.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function CrudTable({ type }) {
+    const config = {
+      products: {
+        title: "Products",
+        search: productSearch,
+        setSearch: setProductSearch,
+        refresh: () => fetchProducts(productSearch),
+        endpoint: "products",
+        form: productForm,
+        setForm: setProductForm,
+        empty: emptyProduct,
+        editingId: editingProductId,
+        setEditingId: setEditingProductId,
+        rows: products,
+        fields: ["name", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "list_price", "multiplier", "surcharge", "notes"],
+      },
+      notes: {
+        title: "Notes Library",
+        search: noteSearch,
+        setSearch: setNoteSearch,
+        refresh: () => fetchNotes(noteSearch),
+        endpoint: "notes-library",
+        form: noteForm,
+        setForm: setNoteForm,
+        empty: emptyNote,
+        editingId: editingNoteId,
+        setEditingId: setEditingNoteId,
+        rows: notes,
+        fields: ["item", "type", "category", "series", "model", "note_type", "text", "sort_order"],
+      },
+      companies: {
+        title: "Companies",
+        search: companySearch,
+        setSearch: setCompanySearch,
+        refresh: () => fetchCompanies(companySearch),
+        endpoint: "companies",
+        form: companyForm,
+        setForm: setCompanyForm,
+        empty: emptyCompany,
+        editingId: editingCompanyId,
+        setEditingId: setEditingCompanyId,
+        rows: companies,
+        fields: ["name", "type", "address1", "address2", "city", "state", "zipcode", "website", "account_number", "payment_terms", "notes"],
+      },
+      contacts: {
+        title: "Contacts",
+        search: contactSearch,
+        setSearch: setContactSearch,
+        refresh: () => fetchContacts(contactSearch),
+        endpoint: "contacts",
+        form: contactForm,
+        setForm: setContactForm,
+        empty: emptyContact,
+        editingId: editingContactId,
+        setEditingId: setEditingContactId,
+        rows: contacts,
+        fields: ["company_id", "first_name", "last_name", "role", "email", "tel", "mobile", "notes"],
+      },
+    }[type];
+
+    return (
+      <section className="screen">
+        <div className="toolbar">
+          <input placeholder={`Search ${config.title}`} value={config.search} onChange={(e) => config.setSearch(e.target.value)} />
+          <button className="btn primary" onClick={config.refresh}>Search</button>
+        </div>
+
+        <form className="card form-grid" onSubmit={(e) => saveCrud(e, config.endpoint, config.form, config.editingId, () => config.setForm(config.empty), config.refresh, config.setEditingId)}>
+          <h3>{config.editingId ? `Edit ${config.title}` : `Add ${config.title}`}</h3>
+          {type === "contacts" && (
+            <select name="company_id" value={config.form.company_id} onChange={updateForm(config.setForm)}>
+              <option value="">Select Company</option>
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          {config.fields.filter((f) => !(type === "contacts" && f === "company_id")).map((field) =>
+            field === "description" || field === "notes" || field === "text" ? (
+              <textarea key={field} name={field} placeholder={field} value={config.form[field] || ""} onChange={updateForm(config.setForm)} />
+            ) : field === "note_type" ? (
+              <select key={field} name={field} value={config.form[field] || "standard"} onChange={updateForm(config.setForm)}>
+                <option value="standard">standard</option>
+                <option value="additional">additional</option>
+                <option value="exception">exception</option>
+                <option value="internal">internal</option>
+              </select>
+            ) : (
+              <input key={field} name={field} placeholder={field} value={config.form[field] || ""} onChange={updateForm(config.setForm)} />
+            )
+          )}
+          <button className="btn primary">{config.editingId ? "Update" : "Add"}</button>
+          {config.editingId && <button type="button" className="btn secondary" onClick={() => { config.setEditingId(null); config.setForm(config.empty); }}>Cancel</button>}
+        </form>
+
+        <div className="card table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>{config.fields.slice(0, 8).map((f) => <th key={f}>{f}</th>)}<th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {config.rows.map((row) => (
+                <tr key={row.id}>
+                  {config.fields.slice(0, 8).map((f) => <td key={f}>{String(row[f] ?? "")}</td>)}
+                  <td>
+                    <button className="btn edit" onClick={() => { config.setEditingId(row.id); config.setForm({ ...config.empty, ...row }); }}>Edit</button>
+                    <button className="btn delete" onClick={() => deleteCrud(config.endpoint, row.id, config.refresh)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="container">
+      <header className="app-header">
+        <h2>Quote System</h2>
+        <nav>
+          <button className={tab === "builder" ? "active" : ""} onClick={() => setTab("builder")}>Quote Builder</button>
+          <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>Quote Dashboard</button>
+          <button className={tab === "companies" ? "active" : ""} onClick={() => setTab("companies")}>Companies</button>
+          <button className={tab === "contacts" ? "active" : ""} onClick={() => setTab("contacts")}>Contacts</button>
+          <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>Products</button>
+          <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}>Notes Library</button>
+        </nav>
+      </header>
+
+{tab === "builder" && Builder()}
+{tab === "dashboard" && Dashboard()}
+{tab === "companies" && CrudTable({ type: "companies" })}
+{tab === "contacts" && CrudTable({ type: "contacts" })}
+{tab === "products" && CrudTable({ type: "products" })}
+{tab === "notes" && CrudTable({ type: "notes" })}
+
+      {noteModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <div className="modal-head">
+              <h3>Line Item Notes</h3>
+              <button className="btn secondary" onClick={() => setNoteModalOpen(false)}>Close</button>
+            </div>
+
+            {["standard", "additional", "exception", "internal"].map((type) => (
+              <div key={type} className="note-column">
+                <h4>{type}</h4>
+                {noteDrafts.filter((n) => n.note_type === type).map((n, index) => {
+                  const globalIndex = noteDrafts.indexOf(n);
+                  return (
+                    <div key={`${type}-${index}`} className="note-row">
+                      <input type="checkbox" checked={!!n.is_selected} onChange={(e) => {
+                        const copy = [...noteDrafts];
+                        copy[globalIndex].is_selected = e.target.checked;
+                        setNoteDrafts(copy);
+                      }} />
+                      <textarea value={n.text || ""} onChange={(e) => {
+                        const copy = [...noteDrafts];
+                        copy[globalIndex].text = e.target.value;
+                        setNoteDrafts(copy);
+                      }} />
+                      <button className="btn delete" onClick={() => setNoteDrafts(noteDrafts.filter((_, i) => i !== globalIndex))}>X</button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+            <button className="btn secondary" onClick={addCustomNote}>Add Custom Note</button>
+            <button className="btn primary" onClick={saveLineItemNotes}>Save Notes</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-
-export default App;
