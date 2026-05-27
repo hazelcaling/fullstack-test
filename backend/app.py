@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from datetime import datetime
 from flask_cors import CORS
 from sqlalchemy import or_
 from models import (
@@ -117,7 +118,8 @@ def quote_to_dict(q):
 
     return {
         "id": q.id,
-        "date": q.date.strftime("%m/%d/%Y") if q.date else "",
+        # "date": q.date.strftime("%m/%d/%Y") if q.date else "",
+        "date": q.date.isoformat() if q.date else "",
         "quote_number": q.quote_number,
         "bid_date": q.bid_date,
         "contact": q.contact or [],
@@ -138,6 +140,7 @@ def product_to_dict(p):
     return {
         "id": p.id,
         "name": p.name,
+        "tag": p.tag,
         "vendor": p.vendor,
         "manufacturer": p.manufacturer,
         "category": p.category,
@@ -228,7 +231,16 @@ def apply_product_to_line_item(item, product):
 @app.route("/quotes", methods=["GET"])
 def get_quotes():
     search = request.args.get("search", "").strip()
+    line_search = request.args.get("line_search", "").strip()
     status = request.args.get("status", "").strip()
+    customer = request.args.get("customer", "").strip()
+    location = request.args.get("location", "").strip()
+
+    quote_date_from = request.args.get("quote_date_from", "").strip()
+    quote_date_to = request.args.get("quote_date_to", "").strip()
+    bid_date_from = request.args.get("bid_date_from", "").strip()
+    bid_date_to = request.args.get("bid_date_to", "").strip()
+
     sort_by = request.args.get("sort_by", "id")
     direction = request.args.get("direction", "desc")
 
@@ -240,19 +252,39 @@ def get_quotes():
             or_(
                 Quote.quote_number.ilike(like),
                 Quote.project.ilike(like),
-                Quote.to_company.ilike(like),
                 Quote.attention.ilike(like),
-                Quote.location.ilike(like),
-                Quote.status.ilike(like),
             )
         )
+
+    if line_search:
+        like = f"%{line_search}%"
+        query = query.join(LineItem).filter(LineItem.description.ilike(like))
 
     if status:
         query = query.filter(Quote.status == status)
 
+    if customer:
+        query = query.filter(Quote.to_company.ilike(f"%{customer}%"))
+
+    if location:
+        query = query.filter(Quote.location.ilike(f"%{location}%"))
+
+    if quote_date_from:
+        query = query.filter(Quote.date >= datetime.strptime(quote_date_from, "%Y-%m-%d").date())
+
+    if quote_date_to:
+        query = query.filter(Quote.date <= datetime.strptime(quote_date_to, "%Y-%m-%d").date())
+
+    if bid_date_from:
+        query = query.filter(Quote.bid_date >= bid_date_from)
+
+    if bid_date_to:
+        query = query.filter(Quote.bid_date <= bid_date_to)
+
     sort_map = {
         "id": Quote.id,
         "quote_number": Quote.quote_number,
+        "date": Quote.date,
         "bid_date": Quote.bid_date,
         "created_at": Quote.created_at,
         "status": Quote.status,
@@ -261,10 +293,11 @@ def get_quotes():
         "attention": Quote.attention,
         "location": Quote.location,
     }
+
     col = sort_map.get(sort_by, Quote.id)
     query = query.order_by(col.asc() if direction == "asc" else col.desc())
 
-    return jsonify([quote_to_dict(q) for q in query.all()])
+    return jsonify([quote_to_dict(q) for q in query.distinct().all()])
 
 
 @app.route("/quotes/<int:id>", methods=["GET"])
@@ -276,6 +309,7 @@ def get_quote(id):
 def create_quote():
     data = request.json or {}
     quote = Quote(
+        date=datetime.strptime(data.get("date"),"%Y-%m-%d").date() if data.get("date") else datetime.utcnow().date(),
         bid_date=data.get("bid_date", "N/A"),
         contact=data.get("contact", []),
         project=data.get("project"),
@@ -294,7 +328,11 @@ def create_quote():
 def update_quote(id):
     quote = Quote.query.get_or_404(id)
     data = request.json or {}
+    # quote date
+    if data.get("date"):
+        quote.date = datetime.strptime(data.get("date"), "%Y-%m-%d").date()
 
+    # bid due date
     quote.bid_date = data.get("bid_date", quote.bid_date)
     quote.contact = data.get("contact", quote.contact or [])
     quote.project = data.get("project", quote.project)
@@ -458,8 +496,9 @@ def get_products():
 def create_product():
     p = Product()
     data = request.json or {}
-    for field in ["name", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
+    for field in ["name", "tag", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
         setattr(p, field, data.get(field))
+    p.part_number = data.get("part_number") or None
     p.list_price = num(data.get("list_price"), 0)
     p.multiplier = num(data.get("multiplier"), 1)
     p.surcharge = num(data.get("surcharge"), 0)
@@ -474,7 +513,7 @@ def create_product():
 def update_product(id):
     p = Product.query.get_or_404(id)
     data = request.json or {}
-    for field in ["name", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
+    for field in ["name", "tag", "vendor", "manufacturer", "category", "type", "series", "model", "part_number", "description", "notes"]:
         setattr(p, field, data.get(field, getattr(p, field)))
     p.list_price = num(data.get("list_price"), p.list_price)
     p.multiplier = num(data.get("multiplier"), p.multiplier)

@@ -177,6 +177,8 @@ class Product(db.Model):
 
     name = db.Column(db.String(200))
 
+    tag = db.Column(db.String(200), nullable=True)
+
     vendor = db.Column(db.String(100))
     manufacturer = db.Column(db.String(100))
 
