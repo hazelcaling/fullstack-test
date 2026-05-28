@@ -2507,7 +2507,7 @@ const current = contactToArray(quoteForm.contact);
                     Edit
                   </button>
 
-{!["notes", "startup", "freight"].includes(
+{!["notes", "startup", "freight", "adders"].includes(
   String(item.item || "").toLowerCase()
 ) && (
   <button
@@ -2640,7 +2640,7 @@ const current = contactToArray(quoteForm.contact);
     type === "products" || type === "notes"
       ? ({
           name: "Product Name e.g. Non-Condensing Hydronic Heating Boiler",
-          category: "Category e.g. Boiler, Pump, Tank, Startup, Notes, Freight",
+          category: "Category e.g. Boiler, Pump, Tank, Startup, Notes, Freight, Adders", 
           type: "Type e.g. Condensing, End Suction, Storage Tank",
         }[field] || field)
       : field
@@ -2679,7 +2679,7 @@ const current = contactToArray(quoteForm.contact);
   return (
     <div className="container">
       <header className="app-header">
-        <h2>Quote System</h2>
+        <h2>HTE Quotes</h2>
         <nav>
           <NavLink to="/">Quote Form</NavLink>
           <NavLink to="/dashboard">Quote Dashboard</NavLink>
